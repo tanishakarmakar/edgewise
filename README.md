@@ -39,9 +39,10 @@ Optional backends:
 
 ```bash
 uv sync --extra mlx        # Apple Silicon (MLX)
-uv sync --extra llamacpp   # llama.cpp (GGUF models)
 uv sync --extra cloud      # cloud fallback for the router
 ```
+
+llama.cpp (GGUF models) support is coming in milestone 1.
 
 ## Roadmap
 

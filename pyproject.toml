@@ -15,7 +15,6 @@ dependencies = [
 
 [project.optional-dependencies]
 mlx = ["mlx-lm"]
-llamacpp = ["llama-cpp-python"]
 cloud = ["anthropic"]
 
 [project.scripts]
