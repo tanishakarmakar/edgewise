@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edgewise Architecture</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --surface: #ffffff; --surface-2: #f0efeb; --text: #1d1d1b; --muted: #6b6a66;
+    --border: #dcdad3; --accent: #2f6fde; --accent-soft: #e5edfb;
+    --c-iface: #7b5cd6; --c-feat: #2f6fde; --c-found: #1f8a70; --c-back: #c46a1b;
+    --ok: #1f8a70; --warn: #b7791f; --stop: #c2410c;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141413; --surface: #1d1d1b; --surface-2: #262624; --text: #ecebe6; --muted: #a3a29c;
+      --border: #3a3936; --accent: #7aa7f5; --accent-soft: #1f2a3d;
+      --c-iface: #a68ff0; --c-feat: #7aa7f5; --c-found: #4fc4a0; --c-back: #eb9a52;
+      --ok: #4fc4a0; --warn: #e3b25a; --stop: #f08a5d; --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141413; --surface: #1d1d1b; --surface-2: #262624; --text: #ecebe6; --muted: #a3a29c;
+    --border: #3a3936; --accent: #7aa7f5; --accent-soft: #1f2a3d;
+    --c-iface: #a68ff0; --c-feat: #7aa7f5; --c-found: #4fc4a0; --c-back: #eb9a52;
+    --ok: #4fc4a0; --warn: #e3b25a; --stop: #f08a5d; --shadow: none;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 32px 16px 64px; }
+  header h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: -.01em; }
+  header p { margin: 0; color: var(--muted); }
+  code { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-2);
+         padding: 1px 5px; border-radius: 4px; }
+
+  nav { display: flex; gap: 6px; flex-wrap: wrap; margin: 24px 0 20px; }
+  nav button {
+    font: inherit; font-size: 14px; padding: 7px 14px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  }
+  nav button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  :root[data-theme="dark"] nav button[aria-selected="true"] { color: #10131a; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) nav button[aria-selected="true"] { color: #10131a; }
+  }
+
+  section[role="tabpanel"] { display: none; }
+  section[role="tabpanel"].active { display: block; }
+  .lead { color: var(--muted); margin: 0 0 20px; max-width: 760px; }
+
+  /* Layered architecture */
+  .layer { display: grid; grid-template-columns: 130px 1fr; gap: 12px; align-items: stretch; margin-bottom: 10px; }
+  .layer-label { display: flex; align-items: center; font-weight: 600; font-size: 13px; text-transform: uppercase;
+                 letter-spacing: .06em; color: var(--lc); border-left: 3px solid var(--lc); padding-left: 10px; }
+  .layer-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .box { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--lc);
+         border-radius: 8px; padding: 10px 12px; box-shadow: var(--shadow); }
+  .box b { display: block; font-size: 14px; }
+  .box span { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .box.done::after { content: "built"; float: right; font-size: 11px; color: var(--ok); margin-top: -36px; }
+  .down { text-align: center; color: var(--muted); font-size: 12px; margin: -2px 0 8px 142px; }
+
+  /* Flows */
+  .flow { display: flex; flex-direction: column; align-items: stretch; max-width: 760px; }
+  .step { display: grid; grid-template-columns: 34px 1fr; gap: 12px; background: var(--surface);
+          border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; box-shadow: var(--shadow); }
+  .num { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent);
+         display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+  .step h3 { margin: 2px 0 2px; font-size: 15px; }
+  .step p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .tag { display: inline-block; font-size: 11.5px; padding: 1px 7px; border-radius: 999px; margin: 6px 4px 0 0;
+         border: 1px solid var(--border); color: var(--muted); }
+  .arrow { height: 26px; display: grid; place-items: center; color: var(--muted); }
+  .arrow::before { content: ""; width: 2px; height: 14px; background: var(--border); }
+  .arrow::after { content: ""; border: 6px solid transparent; border-top-color: var(--border); border-bottom: 0; }
+  .arrow { grid-template-rows: 14px 6px; }
+
+  .branch { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .branch .step { grid-template-columns: 1fr; border-left: 4px solid var(--bc, var(--border)); }
+  .branch .step h3 { color: var(--bc); }
+  .loop { border: 2px dashed var(--border); border-radius: 14px; padding: 14px; position: relative; }
+  .loop-label { position: absolute; top: -11px; left: 16px; background: var(--bg); padding: 0 8px;
+                font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .out { background: var(--accent-soft); border-color: transparent; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 18px; font-size: 13px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; background: var(--lc); }
+
+  .theme-toggle { float: right; font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+                  border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+
+  @media (max-width: 640px) {
+    .layer { grid-template-columns: 1fr; }
+    .layer-label { padding: 2px 0 2px 10px; }
+    .down { margin-left: 0; }
+    .box.done::after { margin-top: 0; float: none; display: block; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <button class="theme-toggle" id="theme" type="button">Toggle theme</button>
+    <h1>Edgewise architecture</h1>
+    <p>Run the right LLM, the right way, on the hardware you have. Details in <code>docs/SPEC.md</code>.</p>
+  </header>
+
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-tab="overview">System overview</button>
+    <button role="tab" aria-selected="false" data-tab="bench">Bench flow</button>
+    <button role="tab" aria-selected="false" data-tab="advise">Advisor flow</button>
+    <button role="tab" aria-selected="false" data-tab="accel">Accelerator flow</button>
+    <button role="tab" aria-selected="false" data-tab="route">Router flow</button>
+  </nav>
+
+  <!-- OVERVIEW -->
+  <section role="tabpanel" id="overview" class="active">
+    <p class="lead">Four layers. Each layer only depends on the ones below it. The three features share one foundation, so every recommendation, speedup and routing decision is backed by the same measurements.</p>
+
+    <div class="layer" style="--lc: var(--c-iface)">
+      <div class="layer-label">Interfaces</div>
+      <div class="layer-boxes">
+        <div class="box"><b>CLI</b><span>info · models · bench · advise · route · serve · report</span></div>
+        <div class="box"><b>Local API</b><span>OpenAI-compatible <code>/v1/chat/completions</code>, localhost only</span></div>
+      </div>
+    </div>
+    <div class="down">▼ uses</div>
+
+    <div class="layer" style="--lc: var(--c-feat)">
+      <div class="layer-label">Features</div>
+      <div class="layer-boxes">
+        <div class="box"><b>Advisor</b><span>Which variant fits this device and task best?</span></div>
+        <div class="box"><b>Accelerator</b><span>Speculative, prompt-lookup and adaptive decoding</span></div>
+        <div class="box"><b>Router</b><span>Local or cloud? Rules, classifier, cascade, cost</span></div>
+      </div>
+    </div>
+    <div class="down">▼ uses</div>
+
+    <div class="layer" style="--lc: var(--c-found)">
+      <div class="layer-label">Foundation</div>
+      <div class="layer-boxes">
+        <div class="box done"><b>Hardware profiler</b><span>RAM, chip, disk, memory budget</span></div>
+        <div class="box"><b>Model catalog</b><span>Variants, quantization, architecture numbers</span></div>
+        <div class="box"><b>Eval suite</b><span>Task datasets + scorers</span></div>
+        <div class="box"><b>Bench runner</b><span>TTFT, tokens/s, memory, quality</span></div>
+        <div class="box"><b>Results store</b><span>DuckDB: runs, perf, quality, route log</span></div>
+        <div class="box"><b>Config</b><span><code>edgewise.toml</code>: paths, prices, policy</span></div>
+      </div>
+    </div>
+    <div class="down">▼ uses</div>
+
+    <div class="layer" style="--lc: var(--c-back)">
+      <div class="layer-label">Backends</div>
+      <div class="layer-boxes">
+        <div class="box"><b>MLX</b><span>In-process, Apple Silicon, full decode control</span></div>
+        <div class="box"><b>llama.cpp</b><span>Prebuilt <code>llama-server</code> over HTTP (GGUF)</span></div>
+        <div class="box"><b>Cloud</b><span>Anthropic API: router fallback + LLM judge</span></div>
+        <div class="box"><b>Fake</b><span>Scripted tokens for unit tests</span></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span style="--lc: var(--c-iface)"><i></i>Interfaces</span>
+      <span style="--lc: var(--c-feat)"><i></i>Features</span>
+      <span style="--lc: var(--c-found)"><i></i>Foundation</span>
+      <span style="--lc: var(--c-back)"><i></i>Backends</span>
+      <span>“built” = exists today</span>
+    </div>
+  </section>
+
+  <!-- BENCH -->
+  <section role="tabpanel" id="bench">
+    <p class="lead"><code>edgewise bench --model &lt;id&gt; --task &lt;id&gt;</code>: measures how fast a model runs on this device and how well it does real tasks. Every other feature reads from what this writes.</p>
+    <div class="flow">
+      <div class="step"><div class="num">1</div><div><h3>Write run manifest</h3><p>Hardware, git commit, library versions, AC-power status, so any number can be traced back and reproduced.</p><span class="tag">hardware profiler</span><span class="tag">warns if on battery</span></div></div>
+      <div class="arrow"></div>
+      <div class="step"><div class="num">2</div><div><h3>Check memory, then load model</h3><p>Estimate weights + KV cache + overhead. Refuse if it exceeds the budget; record load time and memory after load.</p><span class="tag">catalog</span><span class="tag">backend.load()</span></div></div>
+      <div class="arrow"></div>
+      <div class="step"><div class="num">3</div><div><h3>Warm-up</h3><p>3 throwaway generations so caches and kernels are ready.</p></div></div>
+      <div class="arrow"></div>
+      <div class="loop"><span class="loop-label">repeat 5× per prompt length (128 / 1K / 4K tokens)</span>
+        <div class="step"><div class="num">4</div><div><h3>Performance pass</h3><p>Stream tokens and timestamp each one. Compute TTFT, prefill tokens/s, decode tokens/s, inter-token latency P50/P95, peak memory.</p><span class="tag">same timing code for every backend</span></div></div>
+      </div>
+      <div class="arrow"></div>
+      <div class="step"><div class="num">5</div><div><h3>Quality pass</h3><p>Run every eval item once with greedy decoding and score it: tool-call match, JSON field F1, QA F1, math exact match, or LLM judge for open chat.</p><span class="tag">eval suite</span><span class="tag">scorers</span></div></div>
+      <div class="arrow"></div>
+      <div class="step"><div class="num">6</div><div><h3>Unload + cool down</h3><p>Free memory and wait 10 s to reduce thermal effects on the next model.</p></div></div>
+      <div class="arrow"></div>
+      <div class="step out"><div class="num">✓</div><div><h3>Results store</h3><p>Rows in <code>runs</code>, <code>perf</code>, <code>quality</code>. Curated snapshots go to <code>results/published/</code> for the README.</p></div></div>
+    </div>
+  </section>
+
+  <!-- ADVISE -->
+  <section role="tabpanel" id="advise">
+    <p class="lead"><code>edgewise advise --task tool_calling --min-quality 0.9</code>: picks the best model variant for this device and task, and explains why. It only ranks variants that have actually been measured.</p>
+    <div class="flow">
+      <div class="step"><div class="num">1</div><div><h3>All catalog variants</h3><p>e.g. Qwen 2.5 and Llama 3.2 at 0.5B–3B, in MLX 4/8-bit and GGUF Q4/Q5/Q8.</p></div></div>
+      <div class="arrow"></div>
+      <div class="step"><div class="num">2</div><div><h3>Feasibility filter</h3><p>Drop anything whose estimated memory exceeds the budget (device default or <code>--memory</code>). Mark near-limit ones “tight”.</p><span class="tag">memory model</span></div></div>
+      <div class="arrow"></div>
+      <div class="step"><div class="num">3</div><div><h3>Look up evidence</h3><p>Measured quality and speed from the results store. Unmeasured variants are listed with the command to benchmark them, never ranked on guesses.</p><span class="tag">results store</span></div></div>
+      <div class="arrow"></div>
+      <div class="step"><div class="num">4</div><div><h3>Quality floor</h3><p>Drop variants below <code>--min-quality</code> (score relative to the highest-precision version of the same model).</p></div></div>
+      <div class="arrow"></div>
+      <div class="step"><div class="num">5</div><div><h3>Pareto frontier</h3><p>Keep only variants that no other variant beats on both quality and speed.</p></div></div>
+      <div class="arrow"></div>
+      <div class="branch">
+        <div class="step" style="--bc: var(--c-feat)"><div><h3>--prefer speed</h3><p>Fastest variant above the floor.</p></div></div>
+        <div class="step" style="--bc: var(--c-found)"><div><h3>--prefer balanced</h3><p>Default. Maximize quality × speed.</p></div></div>
+        <div class="step" style="--bc: var(--c-iface)"><div><h3>--prefer quality</h3><p>Highest quality that fits.</p></div></div>
+      </div>
+      <div class="arrow"></div>
+      <div class="step out"><div class="num">✓</div><div><h3>Recommendation + explanation</h3><p>Choice, runner-up and the trade-off in plain words. Rich table, <code>--json</code>, and a Pareto chart for the README.</p></div></div>
+    </div>
+  </section>
+
+  <!-- ACCEL -->
+  <section role="tabpanel" id="accel">
+    <p class="lead">Speculative decoding on the MLX backend: something cheap guesses <em>k</em> tokens, and the main model checks all of them in one forward pass. With greedy verification the output is <strong>identical</strong> to normal decoding, just faster.</p>
+    <div class="flow">
+      <div class="branch">
+        <div class="step" style="--bc: var(--c-feat)"><div><h3>Draft model</h3><p>A small model (0.5B/1B) from the same tokenizer family proposes <em>k</em> tokens.</p></div></div>
+        <div class="step" style="--bc: var(--c-found)"><div><h3>Prompt lookup</h3><p>Find the latest n-gram in the prompt and propose what followed it. Free, great for RAG and code edits.</p></div></div>
+      </div>
+      <div class="arrow"></div>
+      <div class="loop"><span class="loop-label">loop until max tokens or end of text</span>
+        <div class="step"><div class="num">1</div><div><h3>Propose <em>k</em> draft tokens</h3><p><em>k</em> comes from the adaptive controller (1–8).</p></div></div>
+        <div class="arrow"></div>
+        <div class="step"><div class="num">2</div><div><h3>Verify in one pass</h3><p>Target model scores context + all <em>k</em> drafts at once.</p></div></div>
+        <div class="arrow"></div>
+        <div class="step"><div class="num">3</div><div><h3>Accept matching prefix</h3><p>Keep drafts while each equals the target's own top choice; add one target token at the first mismatch.</p></div></div>
+        <div class="arrow"></div>
+        <div class="step"><div class="num">4</div><div><h3>Roll back KV caches</h3><p>Trim draft/target caches to the accepted length.</p></div></div>
+        <div class="arrow"></div>
+        <div class="step"><div class="num">5</div><div><h3>Adapt <em>k</em></h3><p>High recent acceptance → raise <em>k</em>. Low → lower it. Near zero → fall back to standard decoding for a while.</p></div></div>
+      </div>
+      <div class="arrow"></div>
+      <div class="step out"><div class="num">✓</div><div><h3>Measured per task</h3><p>Speedup vs. standard decoding, acceptance rate, tokens accepted per step, extra memory, plus a token-for-token test that output is unchanged.</p></div></div>
+    </div>
+  </section>
+
+  <!-- ROUTE -->
+  <section role="tabpanel" id="route">
+    <p class="lead"><code>edgewise route "&lt;prompt&gt;"</code> or <code>POST /v1/chat/completions</code>: answer locally whenever possible, escalate to the cloud only when needed, and log every decision with its reason and cost.</p>
+    <div class="flow">
+      <div class="step"><div class="num">1</div><div><h3>Request arrives</h3><p>Messages plus optional tools, JSON schema, or <code>private: true</code>.</p></div></div>
+      <div class="arrow"></div>
+      <div class="step"><div class="num">2</div><div><h3>Hard rules (checked first, can't be overridden)</h3><p>Private flag or detected PII → <strong>local only</strong>. Offline → <strong>local only</strong>. Caller forces cloud → cloud.</p><span class="tag">PII detector</span><span class="tag">connectivity check</span></div></div>
+      <div class="arrow"></div>
+      <div class="step"><div class="num">3</div><div><h3>Routing policy</h3><p>Chosen in <code>edgewise.toml</code>.</p></div></div>
+      <div class="arrow"></div>
+      <div class="branch">
+        <div class="step" style="--bc: var(--c-found)"><div><h3>Classifier</h3><p>Before generating: predict “will the local model succeed?” from prompt embedding + features. Yes → local, no → cloud.</p></div></div>
+        <div class="step" style="--bc: var(--c-feat)"><div><h3>Cascade</h3><p>Generate locally first. Low mean log-prob or invalid JSON/tool call → escalate to cloud.</p></div></div>
+        <div class="step" style="--bc: var(--muted)"><div><h3>Baselines</h3><p>Local-only and cloud-only, for comparison.</p></div></div>
+      </div>
+      <div class="arrow"></div>
+      <div class="branch">
+        <div class="step" style="--bc: var(--ok)"><div><h3>Local model</h3><p>Fast, private, free. Can use the Accelerator.</p></div></div>
+        <div class="step" style="--bc: var(--warn)"><div><h3>Cloud model</h3><p>Higher quality; tokens × configured prices → cost. Stops at the spend limit.</p></div></div>
+      </div>
+      <div class="arrow"></div>
+      <div class="step out"><div class="num">✓</div><div><h3>Response + route log</h3><p>Answer plus <code>{route, reason, model_id, cost_usd}</code>. Logs feed the cost-vs-quality curve and the % handled locally.</p></div></div>
+    </div>
+  </section>
+
+  <footer>Edgewise · design draft v0.1 · MIT licensed</footer>
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('[role="tab"]');
+  const panels = document.querySelectorAll('[role="tabpanel"]');
+  function show(id) {
+    tabs.forEach(t => t.setAttribute('aria-selected', String(t.dataset.tab === id)));
+    panels.forEach(p => p.classList.toggle('active', p.id === id));
+    try { history.replaceState(null, '', '#' + id); } catch (e) {}
+  }
+  tabs.forEach(t => t.addEventListener('click', () => show(t.dataset.tab)));
+  const initial = location.hash.slice(1);
+  if (document.getElementById(initial)) show(initial);
+
+  const root = document.documentElement;
+  document.getElementById('theme').addEventListener('click', () => {
+    const dark = root.dataset.theme
+      ? root.dataset.theme === 'dark'
+      : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+  });
+</script>
+</body>
+</html>

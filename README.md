@@ -24,6 +24,8 @@ Running every request through a large cloud model is slow, expensive, and imposs
 
 All three share one **task-based eval suite**, so every claim is backed by a measurement.
 
+📐 Design: [technical spec](docs/SPEC.md) · [architecture & flow diagrams](docs/architecture.html) (open locally in a browser)
+
 ## Quickstart
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
