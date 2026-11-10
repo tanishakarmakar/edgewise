@@ -1,0 +1,8 @@
+{"id": "math-01", "prompt": "A car travels 180 km in 2.5 hours. What is its average speed in km/h?", "expected": 72}
+{"id": "math-02", "prompt": "An EV battery holds 60 kWh. The car uses 15 kWh per 100 km. How many km can it drive on a full battery?", "expected": 400}
+{"id": "math-03", "prompt": "A charger adds 2 kWh every 5 minutes. How many minutes does it take to add 30 kWh?", "expected": 75}
+{"id": "math-04", "prompt": "Riya buys 3 notebooks at ₹45 each and 2 pens at ₹12 each. She pays with a ₹200 note. How much change, in rupees, does she get?", "expected": 41}
+{"id": "math-05", "prompt": "A train leaves at 09:40 and arrives at 13:15. How many minutes is the journey?", "expected": 215}
+{"id": "math-06", "prompt": "A test suite has 240 tests and 15% of them fail. How many tests pass?", "expected": 204}
+{"id": "math-07", "prompt": "A model generates 25 tokens per second. How many seconds does it take to generate 1,000 tokens?", "expected": 40}
+{"id": "math-08", "prompt": "A warehouse has 4 shelves with 18 boxes each. 23 boxes are shipped out. How many boxes remain?", "expected": 49}
