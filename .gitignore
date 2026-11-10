@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets
+.env
+.env.*
+
+# Model weights and caches (large, never commit)
+models/
+*.gguf
+*.safetensors
+*.bin
+*.npz
+
+# Benchmark outputs (commit curated results under results/published/ only)
+results/*
+!results/published/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

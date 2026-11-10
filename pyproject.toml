@@ -1,0 +1,42 @@
+[project]
+name = "edgewise"
+version = "0.1.0"
+description = "On-device LLM inference toolkit: benchmark quantized models, accelerate decoding, and route to the cloud only when needed."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Tanisha Karmakar" }]
+keywords = ["llm", "inference", "edge-ai", "quantization", "speculative-decoding", "mlx", "llama-cpp"]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13",
+    "pydantic>=2",
+]
+
+[project.optional-dependencies]
+mlx = ["mlx-lm"]
+llamacpp = ["llama-cpp-python"]
+cloud = ["anthropic"]
+
+[project.scripts]
+edgewise = "edgewise.cli:app"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/edgewise"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
