@@ -37,5 +37,4 @@ def test_bench_rejects_unknown_model():
 
 
 def test_unfinished_commands_exit_nonzero():
-    for command in ("advise", "route"):
-        assert runner.invoke(app, [command]).exit_code == 1
+    assert runner.invoke(app, ["route"]).exit_code == 1

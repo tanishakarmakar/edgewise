@@ -239,10 +239,81 @@ def _print_bench_report(report, db: Path) -> None:
     )
 
 
+def _parse_gb(text: str) -> float:
+    """ "4", "4GB", "4.5 gb" or "512MB" -> gigabytes."""
+    cleaned = text.strip().lower().replace(" ", "")
+    if cleaned.endswith("mb"):
+        return float(cleaned[:-2]) / 1000
+    return float(cleaned.removesuffix("gb").removesuffix("g"))
+
+
+STATUS_STYLE = {
+    "recommended": "bold green",
+    "runner-up": "green",
+    "candidate": "",
+    "dominated": "dim",
+    "below quality floor": "yellow",
+    "too big": "red",
+    "not benchmarked": "dim",
+}
+
+
 @app.command()
-def advise() -> None:
-    """Recommend the best quantized model for a memory budget and task."""
-    _not_ready("advise", "milestone 2")
+def advise(
+    task: str = typer.Option(..., "--task", "-t", help="Eval task the model will be used for."),
+    memory: str = typer.Option(None, help="Memory budget, e.g. 4GB. Default: this device's."),
+    min_score: float = typer.Option(0.0, help="Lowest acceptable task score (0-1)."),
+    prefer: str = typer.Option("balanced", help="balanced | speed | quality"),
+    db: Path = typer.Option(Path("results/edgewise.duckdb"), help="Results database."),
+    json_out: bool = typer.Option(False, "--json", help="Print the recommendation as JSON."),
+) -> None:
+    """Recommend the best model variant for a task and memory budget, from measured results."""
+    from edgewise.advisor import advise as run_advise
+    from edgewise.evals import get_task
+    from edgewise.store import Store
+
+    try:
+        get_task(task)
+        budget = _parse_gb(memory) if memory else detect().model_budget_gb
+        if prefer not in ("balanced", "speed", "quality"):
+            raise ValueError(f"--prefer must be balanced, speed or quality, not {prefer!r}")
+    except (KeyError, ValueError) as e:
+        console.print(f"[red]error:[/red] {e.args[0]}")
+        raise typer.Exit(code=1) from e
+
+    with Store(db) as store:
+        rec = run_advise(Catalog.load(), store, task, budget, min_score, prefer)
+
+    if json_out:
+        print(rec.model_dump_json(indent=2))
+        return
+
+    table = Table(
+        title=f"Advice for {task} · budget {budget:.1f} GB · prefer {prefer}", title_justify="left"
+    )
+    table.add_column("Model", no_wrap=True)
+    for col in ("Score", "vs hi-prec", "Tokens/s", "TTFT ms", "Memory GB"):
+        table.add_column(col, justify="right")
+    table.add_column("Status")
+    for row in rec.rows:
+        e = row.evidence
+        style = STATUS_STYLE[row.status]
+        table.add_row(
+            row.model_id,
+            f"{e.score:.2f}" if e else "—",
+            f"{row.vs_full_precision:.0%}" if row.vs_full_precision is not None else "—",
+            f"{e.decode_tps:.0f}" if e else "—",
+            f"{e.ttft_ms:.0f}" if e else "—",
+            f"{row.memory_gb:.2f}" + ("" if row.memory_measured else " (est.)"),
+            f"[{style}]{row.status}[/]" if style else row.status,
+        )
+    console.print(table)
+    if rec.choice:
+        console.print(f"[bold green]→ {rec.choice.model_id}[/bold green]")
+    for reason in rec.reasons:
+        console.print(f"  {reason}")
+    if rec.choice is None:
+        raise typer.Exit(code=1)
 
 
 @app.command()
