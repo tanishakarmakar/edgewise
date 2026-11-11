@@ -157,10 +157,22 @@ def _token_f1(pred: str, gold: str) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
+def _contains_answer(pred: str, gold: str) -> bool:
+    """True if the gold answer's words appear, in order and adjacent, inside the prediction."""
+    p, g = _squad_tokens(pred), _squad_tokens(gold)
+    return bool(g) and any(p[i : i + len(g)] == g for i in range(len(p) - len(g) + 1))
+
+
 def score_qa_f1(output: str, item: EvalItem) -> Score:
-    """SQuAD-style token F1 against the best-matching acceptable answer."""
+    """Full credit if the answer contains an acceptable answer; otherwise SQuAD-style token F1.
+
+    Plain F1 would mark down a correct full-sentence answer for its extra words, which measures
+    verbosity rather than whether the model found the right fact.
+    """
     answer = output.strip().splitlines()[0] if output.strip() else ""
     golds = item.expected if isinstance(item.expected, list) else [item.expected]
+    if any(_contains_answer(answer, g) for g in golds):
+        return Score(value=1, valid=True)
     best = max(_token_f1(answer, g) for g in golds)
     return Score(value=best, valid=bool(answer), detail="" if best == 1 else f"answered {answer!r}")
 

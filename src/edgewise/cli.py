@@ -155,7 +155,8 @@ def bench(
         print(report.model_dump_json(indent=2))
         return
 
-    perf = Table(title=f"{report.model_id}: performance (median [p25–p75])", title_justify="left")
+    # "\[" stops Rich from reading the bracketed range as a style tag.
+    perf = Table(title=f"{report.model_id}: performance (median \\[p25–p75])", title_justify="left")
     for col in ("Prompt", "TTFT ms", "Prefill tok/s", "Decode tok/s", "ITL p95 ms", "Peak MB"):
         perf.add_column(col, justify="right")
     for p in report.perf:

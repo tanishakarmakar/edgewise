@@ -145,6 +145,18 @@ def test_qa_f1_partial_credit_and_best_gold():
     assert 0 < score_qa_f1("Bay", item(["Bay of Bengal"])).value < 1
 
 
+def test_qa_full_sentence_containing_the_answer_gets_full_credit():
+    out = "The Ganges empties into the Bay of Bengal."
+    assert score_qa_f1(out, item(["the Bay of Bengal"])).value == 1
+    out = "The three factors are severity, exposure, and controllability of a hazard."
+    assert score_qa_f1(out, item(["severity, exposure and controllability"])).value == 1
+
+
+def test_qa_wrong_sentence_gets_no_full_credit():
+    out = "The Ganges empties into the Arabian Sea."
+    assert score_qa_f1(out, item(["the Bay of Bengal"])).value < 0.5
+
+
 def test_number_prefers_marked_answer():
     out = "180 / 2.5 = 72, so about 72.\nAnswer: 72"
     assert score_number(out, item(72)).value == 1
