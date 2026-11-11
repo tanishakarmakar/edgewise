@@ -25,7 +25,7 @@ class TokenStream:
 
     prompt_tokens: int
     events: Iterator[TokenEvent]
-    stats: dict[str, int] = field(default_factory=dict)
+    stats: dict[str, Any] = field(default_factory=dict)
 
 
 class Backend(Protocol):

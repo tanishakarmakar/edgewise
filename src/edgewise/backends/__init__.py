@@ -13,6 +13,10 @@ def get_backend(name: BackendName) -> Backend:
         from edgewise.backends.mlx import MLXBackend
 
         return MLXBackend()
+    if name == "cloud":
+        from edgewise.backends.cloud import CloudBackend
+
+        return CloudBackend()
     if name == "fake":
         from edgewise.backends.fake import FakeBackend
 

@@ -25,11 +25,13 @@ class FakeBackend:
         prefill_ns_per_token: int = 100_000,
         decode_ns_per_token: int = 10_000_000,
         memory_mb: float = 500.0,
+        logprob: float = -0.1,
     ):
         self.responder = responder or (lambda messages: "ok")
         self.prefill_ns_per_token = prefill_ns_per_token
         self.decode_ns_per_token = decode_ns_per_token
         self.memory_mb = memory_mb
+        self.logprob = logprob
         self.clock_ns = 0
         self.loaded: list[str] = []
         self.generations = 0
@@ -77,5 +79,8 @@ class FakeBackend:
         for i, word in enumerate(words):
             self.clock_ns += self.decode_ns_per_token
             yield TokenEvent(
-                token_id=i, text=word if i == 0 else " " + word, t_ns=self.clock_ns, logprob=-0.1
+                token_id=i,
+                text=word if i == 0 else " " + word,
+                t_ns=self.clock_ns,
+                logprob=self.logprob,
             )

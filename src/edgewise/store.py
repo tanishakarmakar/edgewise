@@ -66,6 +66,23 @@ CREATE TABLE IF NOT EXISTS quality (
     accepted_draft_tokens INTEGER,
     output_text VARCHAR
 );
+-- One row per routed request. Prompts and answers are deliberately not stored.
+CREATE TABLE IF NOT EXISTS route_log (
+    request_id VARCHAR,
+    ts TIMESTAMP,
+    policy VARCHAR,
+    route VARCHAR,
+    reason VARCHAR,
+    escalated BOOLEAN,
+    model_id VARCHAR,
+    confidence DOUBLE,
+    private BOOLEAN,
+    pii VARCHAR,
+    prompt_tokens INTEGER,
+    completion_tokens INTEGER,
+    cost_usd DOUBLE,
+    latency_ms DOUBLE
+);
 """
 
 
@@ -94,6 +111,9 @@ class Store:
 
     def add_quality(self, rows: list[dict[str, Any]]) -> None:
         self._insert("quality", rows)
+
+    def add_route(self, row: dict[str, Any]) -> None:
+        self._insert("route_log", [row])
 
     def _insert(self, table: str, rows: list[dict[str, Any]]) -> None:
         if not rows:

@@ -24,12 +24,6 @@ console = Console()
 FIT_STYLE = {"fits": "green", "tight": "yellow", "too big": "red"}
 
 
-def _not_ready(command: str, milestone: str) -> None:
-    console.print(f"[yellow]`edgewise {command}` is planned for {milestone}.[/yellow]")
-    console.print("See the roadmap: https://github.com/tanishakarmakar/edgewise#roadmap")
-    raise typer.Exit(code=1)
-
-
 @app.command()
 def version() -> None:
     """Show the installed version."""
@@ -316,10 +310,116 @@ def advise(
         raise typer.Exit(code=1)
 
 
+def _load_router_config(config_path, local, remote, policy, min_logprob):
+    from edgewise.config import load_config
+
+    config = load_config(config_path)
+    updates = {
+        "local_model": local,
+        "remote_model": remote,
+        "policy": policy,
+        "min_logprob": min_logprob,
+    }
+    config.router = config.router.model_copy(
+        update={k: v for k, v in updates.items() if v is not None}
+    )
+    return type(config).model_validate(config.model_dump())  # re-check overridden values
+
+
 @app.command()
-def route() -> None:
-    """Answer locally when possible and escalate to a cloud model when needed."""
-    _not_ready("route", "milestone 4")
+def route(
+    prompt: str = typer.Argument(..., help="The user message."),
+    system: str = typer.Option(None, help="Optional system prompt."),
+    private: bool = typer.Option(False, help="Never send this request off the device."),
+    json_answer: bool = typer.Option(False, "--expect-json", help="The answer must be JSON."),
+    force: str = typer.Option(None, help="local | remote: skip the cascade."),
+    local: str = typer.Option(None, help="Local model id (default: from config)."),
+    remote: str = typer.Option(None, help="cloud | a larger catalog model id | none."),
+    policy: str = typer.Option(None, help="cascade | local-only | remote-only"),
+    min_logprob: float = typer.Option(None, help="Escalate below this confidence."),
+    max_tokens: int = typer.Option(256, help="Maximum tokens in the answer."),
+    config_path: Path = typer.Option(None, "--config", help="Path to edgewise.toml."),
+    db: Path = typer.Option(Path("results/edgewise.duckdb"), help="Results database."),
+    json_out: bool = typer.Option(False, "--json", help="Print the decision as JSON."),
+) -> None:
+    """Answer on this device when possible; escalate to a stronger model when needed."""
+    from rich.panel import Panel
+
+    from edgewise.router import RouteRequest
+    from edgewise.router.build import build_router
+    from edgewise.schema import Message
+    from edgewise.store import Store
+
+    messages = [Message(role="system", content=system)] if system else []
+    messages.append(Message(role="user", content=prompt))
+    try:
+        config = _load_router_config(config_path, local, remote, policy, min_logprob)
+        request = RouteRequest(
+            messages=messages,
+            max_tokens=max_tokens,
+            private=private,
+            force=force,
+            expect="json" if json_answer else "text",
+        )
+        with Store(db) as store:
+            router = build_router(config, Catalog.load(), store)
+            decision = router.route(request)
+    except (KeyError, ValueError, FileNotFoundError) as e:
+        console.print(f"[red]error:[/red] {e.args[0] if isinstance(e, KeyError) else e}")
+        raise typer.Exit(code=1) from e
+
+    if json_out:
+        print(decision.model_dump_json(indent=2))
+        return
+    where = (
+        "[green]on device[/green]" if decision.route == "local" else "[yellow]escalated[/yellow]"
+    )
+    console.print(Panel(decision.text.strip() or "(empty answer)", title=decision.model_id))
+    console.print(f"{where} · {decision.reason}")
+    console.print(
+        f"[dim]{decision.completion_tokens} tokens · {decision.latency_ms:.0f} ms · "
+        f"cost ${decision.cost_usd:.5f}[/dim]"
+    )
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", help="Address to listen on (localhost by default)."),
+    port: int = typer.Option(8080, help="Port to listen on."),
+    local: str = typer.Option(None, help="Local model id (default: from config)."),
+    remote: str = typer.Option(None, help="cloud | a larger catalog model id | none."),
+    policy: str = typer.Option(None, help="cascade | local-only | remote-only"),
+    min_logprob: float = typer.Option(None, help="Escalate below this confidence."),
+    config_path: Path = typer.Option(None, "--config", help="Path to edgewise.toml."),
+    db: Path = typer.Option(Path("results/edgewise.duckdb"), help="Results database."),
+) -> None:
+    """Start a local OpenAI-compatible API backed by the router."""
+    try:
+        import uvicorn
+
+        from edgewise.server import create_app
+    except ImportError as e:
+        console.print("[red]error:[/red] `edgewise serve` needs: uv sync --extra serve")
+        raise typer.Exit(code=1) from e
+    from edgewise.router.build import build_router
+    from edgewise.store import Store
+
+    try:
+        config = _load_router_config(config_path, local, remote, policy, min_logprob)
+        catalog = Catalog.load()
+        catalog.get(config.router.local_model)
+    except (KeyError, ValueError, FileNotFoundError) as e:
+        console.print(f"[red]error:[/red] {e.args[0] if isinstance(e, KeyError) else e}")
+        raise typer.Exit(code=1) from e
+
+    console.print(
+        f"local [bold]{config.router.local_model}[/bold] · escalation "
+        f"[bold]{config.router.remote_model}[/bold] · policy {config.router.policy}"
+    )
+    console.print(f"POST http://{host}:{port}/v1/chat/completions")
+    # The store and the models are created on the server's worker thread (see create_app).
+    app_ = create_app(lambda: build_router(config, catalog, Store(db)))
+    uvicorn.run(app_, host=host, port=port, log_level="warning")
 
 
 if __name__ == "__main__":

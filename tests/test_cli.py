@@ -34,7 +34,3 @@ def test_models_ls_lists_catalog():
 def test_bench_rejects_unknown_model():
     result = runner.invoke(app, ["bench", "--model", "no-such-model"])
     assert result.exit_code != 0
-
-
-def test_unfinished_commands_exit_nonzero():
-    assert runner.invoke(app, ["route"]).exit_code == 1

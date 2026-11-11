@@ -18,7 +18,8 @@ dependencies = [
 
 [project.optional-dependencies]
 mlx = ["mlx-lm"]
-cloud = ["anthropic"]
+cloud = ["anthropic>=1.0"]
+serve = ["fastapi>=0.115", "uvicorn>=0.30"]
 
 [project.scripts]
 edgewise = "edgewise.cli:app"
