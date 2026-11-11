@@ -60,9 +60,14 @@ class FakeBackend:
         return {"fake": "0"}
 
     def generate(
-        self, model: LoadedModel, messages: list[Message], settings: GenerationSettings
+        self,
+        model: LoadedModel,
+        messages: list[Message],
+        settings: GenerationSettings,
+        draft: LoadedModel | None = None,
     ) -> TokenStream:
         self.generations += 1
+        self.last_settings = settings
         prompt_tokens = sum(len(m.content.split()) for m in messages)
         words = self.responder(messages).split()[: settings.max_tokens]
         return TokenStream(prompt_tokens=prompt_tokens, events=self._events(prompt_tokens, words))

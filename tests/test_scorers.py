@@ -5,6 +5,7 @@ from edgewise.evals.scorers import (
     score_json_fields,
     score_number,
     score_qa_f1,
+    score_text_match,
     score_tool_call,
     value_matches,
 )
@@ -155,6 +156,19 @@ def test_qa_full_sentence_containing_the_answer_gets_full_credit():
 def test_qa_wrong_sentence_gets_no_full_credit():
     out = "The Ganges empties into the Arabian Sea."
     assert score_qa_f1(out, item(["the Bay of Bengal"])).value < 0.5
+
+
+def test_text_match_exact_ignoring_fences_and_case():
+    gold = "def f(x):\n    return x + 1"
+    assert score_text_match("```python\ndef f(x):\n    return x + 1\n```", item(gold)).value == 1
+    assert score_text_match("The cat sat.", item("the cat sat")).value == 1
+
+
+def test_text_match_partial_credit_for_small_differences():
+    gold = "codes older than sixty days are archived automatically"
+    s = score_text_match("codes older than ninety days are archived automatically", item(gold))
+    assert 0.8 < s.value < 1
+    assert score_text_match("", item(gold)).valid is False
 
 
 def test_number_prefers_marked_answer():

@@ -118,7 +118,19 @@ def bench(
         [], "--task", "-t", help="Eval task(s) to score. Repeatable. Omit for performance only."
     ),
     all_tasks: bool = typer.Option(False, "--all-tasks", help="Score every eval task."),
-    prompt_lengths: str = typer.Option("128,1024,4096", help="Comma-separated prompt lengths."),
+    decoding: str = typer.Option(
+        "standard", help="standard | speculative (needs --draft) | prompt_lookup"
+    ),
+    draft: str = typer.Option(None, help="Draft model id for speculative decoding."),
+    draft_tokens: int = typer.Option(4, help="Tokens to guess per step (fixed policy)."),
+    k_policy: str = typer.Option(
+        "cost_aware", help="How many tokens to guess: fixed | heuristic | cost_aware"
+    ),
+    prompt_lengths: str = typer.Option(
+        None,
+        help="Comma-separated prompt lengths for the raw speed pass. "
+        "Default: 128,1024,4096 for standard decoding, none for accelerated decoding.",
+    ),
     repeats: int = typer.Option(5, help="Repeats per prompt length."),
     warmup: int = typer.Option(3, help="Warm-up generations (discarded)."),
     max_tokens: int = typer.Option(128, help="Tokens to generate in the performance pass."),
@@ -133,7 +145,14 @@ def bench(
     from edgewise.evals import TASKS
     from edgewise.store import Store
 
-    variant = Catalog.load().get(model)
+    catalog = Catalog.load()
+    try:
+        variant = catalog.get(model)
+    except KeyError as e:
+        console.print(f"[red]error:[/red] {e.args[0]}")
+        raise typer.Exit(code=1) from e
+    if prompt_lengths is None:
+        prompt_lengths = "128,1024,4096" if decoding == "standard" else ""
     config = BenchConfig(
         tasks=list(TASKS) if all_tasks else task,
         prompt_lengths=[int(n) for n in prompt_lengths.split(",") if n.strip()],
@@ -142,46 +161,76 @@ def bench(
         perf_max_tokens=max_tokens,
         cooldown_s=cooldown,
         force=force,
+        decoding=decoding,
+        num_draft_tokens=draft_tokens,
+        k_policy=k_policy,
     )
     log = (lambda msg: None) if json_out else (lambda msg: console.print(f"[dim]{msg}[/dim]"))
     with Store(db) as store:
         try:
-            report = run_bench(variant, get_backend(variant.backend), config, store, log)
-        except BenchError as e:
-            console.print(f"[red]error:[/red] {e}")
+            report = run_bench(
+                variant,
+                get_backend(variant.backend),
+                config,
+                store,
+                log,
+                draft=catalog.get(draft) if draft else None,
+            )
+        except (BenchError, ValueError, KeyError) as e:
+            console.print(f"[red]error:[/red] {e.args[0] if isinstance(e, KeyError) else e}")
             raise typer.Exit(code=1) from e
 
     if json_out:
         print(report.model_dump_json(indent=2))
         return
+    _print_bench_report(report, db)
 
-    # "\[" stops Rich from reading the bracketed range as a style tag.
-    perf = Table(title=f"{report.model_id}: performance (median \\[p25–p75])", title_justify="left")
-    for col in ("Prompt", "TTFT ms", "Prefill tok/s", "Decode tok/s", "ITL p95 ms", "Peak MB"):
-        perf.add_column(col, justify="right")
-    for p in report.perf:
-        perf.add_row(
-            str(p.prompt_tokens),
-            str(p.ttft_ms),
-            str(p.prefill_tps),
-            str(p.decode_tps),
-            str(p.itl_p95_ms),
-            f"{p.peak_memory_mb:.0f}",
-        )
-    console.print(perf)
+
+def _print_bench_report(report, db: Path) -> None:
+    label = report.model_id
+    if report.decoding != "standard":
+        label += f" · {report.decoding}"
+        if report.draft_model_id:
+            label += f" (draft {report.draft_model_id})"
+
+    if report.perf:
+        # "\\[" stops Rich from reading the bracketed range as a style tag.
+        perf = Table(title=f"{label}: speed (median \\[p25–p75])", title_justify="left")
+        for col in ("Prompt", "TTFT ms", "Prefill tok/s", "Decode tok/s", "ITL p95 ms", "Peak MB"):
+            perf.add_column(col, justify="right")
+        for p in report.perf:
+            perf.add_row(
+                str(p.prompt_tokens),
+                str(p.ttft_ms),
+                str(p.prefill_tps),
+                str(p.decode_tps),
+                str(p.itl_p95_ms),
+                f"{p.peak_memory_mb:.0f}",
+            )
+        console.print(perf)
 
     if report.quality:
-        quality = Table(title="Quality", title_justify="left")
-        for col in ("Task", "Items", "Score", "Valid output", "Mean latency"):
+        quality = Table(title=f"{label}: tasks", title_justify="left")
+        columns = ["Task", "Items", "Score", "Valid", "Decode tok/s", "Latency", "Peak MB"]
+        accelerated = any(q.acceptance_rate is not None for q in report.quality)
+        if accelerated:
+            columns.insert(5, "Guesses accepted")
+        for col in columns:
             quality.add_column(col, justify="right")
         for q in report.quality:
-            quality.add_row(
+            row = [
                 q.task_id,
                 str(q.n),
                 f"{q.mean_score:.2f}",
                 f"{q.valid_rate:.0%}",
+                f"{q.decode_tps:.1f}",
                 f"{q.mean_latency_ms:.0f} ms",
-            )
+                f"{q.peak_memory_mb:.0f}",
+            ]
+            if accelerated:
+                rate = q.acceptance_rate
+                row.insert(5, f"{rate:.0%}" if rate is not None else "—")
+            quality.add_row(*row)
         console.print(quality)
 
     console.print(

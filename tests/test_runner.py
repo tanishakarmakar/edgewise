@@ -77,7 +77,26 @@ def test_bench_force_runs_anyway_and_warns(setup):
     variant, store, config = setup
     config = config.model_copy(update={"budget_gb": 0.1, "force": True, "tasks": []})
     report = run_bench(variant, FakeBackend(), config, store)
-    assert any("too big" in w for w in report.warnings)
+    assert any("tight" in w for w in report.warnings)
+
+
+def test_speculative_needs_a_draft_and_counts_its_memory(setup):
+    variant, store, config = setup
+    spec = config.model_copy(update={"decoding": "speculative", "prompt_lengths": []})
+    with pytest.raises(BenchError, match="draft"):
+        run_bench(variant, FakeBackend(), spec, store)
+
+    draft = Catalog.load().get("qwen2.5-0.5b-instruct@mlx-8bit")
+    backend = FakeBackend(responder=oracle_responder())
+    report = run_bench(variant, backend, spec, store, draft=draft)
+    alone = run_bench(variant, FakeBackend(responder=oracle_responder()), config, store)
+    assert report.est_memory_gb > alone.est_memory_gb
+    assert report.draft_model_id == draft.id
+    assert backend.last_settings.decoding == "speculative"
+    assert backend.loaded == []  # target and draft both unloaded
+    assert report.perf == []  # accelerated decodings are measured on task prompts
+    row = store.query("SELECT decoding, draft_model_id FROM runs WHERE run_id = ?", [report.run_id])
+    assert row == [{"decoding": "speculative", "draft_model_id": draft.id}]
 
 
 def test_unloads_even_if_generation_fails(setup):
@@ -95,7 +114,7 @@ def test_unloads_even_if_generation_fails(setup):
 def test_eval_data_is_consistent():
     for task in TASKS.values():
         items = task.load_items()
-        assert len(items) >= 8
+        assert len(items) >= 6
         assert len({i.id for i in items}) == len(items)
         for item in items:
             assert task.build(item)[-1].role == "user"

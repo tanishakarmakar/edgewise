@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 from edgewise.hardware import HardwareInfo
 
 BackendName = Literal["mlx", "llamacpp", "cloud", "fake"]
-Decoding = Literal["standard", "speculative", "prompt_lookup", "adaptive"]
+Decoding = Literal["standard", "speculative", "prompt_lookup"]
+KPolicy = Literal["fixed", "heuristic", "cost_aware"]
 
 
 class Message(BaseModel):
@@ -41,8 +42,8 @@ class GenerationSettings(BaseModel):
     temperature: float = 0.0  # greedy by default, so quality runs are reproducible
     seed: int = 0
     decoding: Decoding = "standard"
-    draft_model_id: str | None = None
-    num_draft_tokens: int = 4
+    num_draft_tokens: int = 4  # guesses per step (starting value for the heuristic policy)
+    k_policy: KPolicy = "fixed"  # how the number of guesses per step is chosen
 
 
 class TokenEvent(BaseModel):
@@ -64,6 +65,9 @@ class GenerationResult(BaseModel):
     itl_ms: list[float] = Field(default_factory=list)
     peak_memory_mb: float
     mean_logprob: float | None = None
+    decode_ms: float = 0.0  # first token -> last token
+    proposed_draft_tokens: int = 0
+    accepted_draft_tokens: int = 0
 
 
 class EvalItem(BaseModel):

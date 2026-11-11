@@ -188,9 +188,21 @@ def score_number(output: str, item: EvalItem) -> Score:
     return Score(value=float(ok), valid=True, detail="" if ok else f"answered {numbers[-1]}")
 
 
+def score_text_match(output: str, item: EvalItem) -> Score:
+    """1 if the output equals the expected text (ignoring case, punctuation and code fences);
+    otherwise token F1, so one wrong word costs a little and a rewrite costs a lot."""
+    text = re.sub(r"^```\w*\n|\n```$", "", output.strip())
+    if not text:
+        return Score(value=0, valid=False, detail="empty output")
+    f1 = _token_f1(text, item.expected)
+    exact = _squad_tokens(text) == _squad_tokens(item.expected)
+    return Score(value=1 if exact else f1, valid=True, detail="" if exact else "text differs")
+
+
 SCORERS = {
     "tool_call": score_tool_call,
     "json_fields": score_json_fields,
     "qa_f1": score_qa_f1,
     "number": score_number,
+    "text_match": score_text_match,
 }
