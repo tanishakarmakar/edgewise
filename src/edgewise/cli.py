@@ -383,6 +383,27 @@ def route(
 
 
 @app.command()
+def report(
+    out: Path = typer.Option(Path("results/published"), help="Directory for REPORT.md and charts."),
+    local: str = typer.Option(None, help="Local model id for the routing section."),
+    strong: str = typer.Option(None, help="Stronger model id the cascade escalates to."),
+    memory: str = typer.Option(None, help="Memory budget, e.g. 4GB. Default: this device's."),
+    db: Path = typer.Option(Path("results/edgewise.duckdb"), help="Results database."),
+) -> None:
+    """Write tables and charts from the measured results (for the README)."""
+    from edgewise.report.build import build_report, write_report
+    from edgewise.store import Store
+
+    budget = _parse_gb(memory) if memory else detect().model_budget_gb
+    with Store(db) as store:
+        result = build_report(store, Catalog.load(), budget, local, strong)
+    for path in write_report(result, out):
+        console.print(f"wrote {path}")
+    if not result.sections:
+        console.print("[yellow]no benchmark results yet: run `edgewise bench` first[/yellow]")
+
+
+@app.command()
 def serve(
     host: str = typer.Option("127.0.0.1", help="Address to listen on (localhost by default)."),
     port: int = typer.Option(8080, help="Port to listen on."),
