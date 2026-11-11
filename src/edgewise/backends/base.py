@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from edgewise.schema import GenerationSettings, Message, ModelVariant, TokenEvent
@@ -13,14 +13,19 @@ from edgewise.schema import GenerationSettings, Message, ModelVariant, TokenEven
 class LoadedModel:
     variant: ModelVariant
     handle: Any  # backend-specific: (model, tokenizer) for MLX, a server URL for llama.cpp, ...
+    meta: dict[str, Any] = field(default_factory=dict)  # backend-specific cached measurements
 
 
 @dataclass
 class TokenStream:
-    """A generation in progress. `prompt_tokens` is known before the first token arrives."""
+    """A generation in progress. `prompt_tokens` is known before the first token arrives.
+
+    `stats` is filled in while `events` is consumed (e.g. proposed/accepted draft tokens).
+    """
 
     prompt_tokens: int
     events: Iterator[TokenEvent]
+    stats: dict[str, Any] = field(default_factory=dict)
 
 
 class Backend(Protocol):
@@ -31,8 +36,14 @@ class Backend(Protocol):
     def unload(self, model: LoadedModel) -> None: ...
 
     def generate(
-        self, model: LoadedModel, messages: list[Message], settings: GenerationSettings
-    ) -> TokenStream: ...
+        self,
+        model: LoadedModel,
+        messages: list[Message],
+        settings: GenerationSettings,
+        draft: LoadedModel | None = None,
+    ) -> TokenStream:
+        """`draft` is the small model used when settings.decoding == "speculative"."""
+        ...
 
     def tokenize(self, model: LoadedModel, text: str) -> list[int]: ...
 

@@ -24,12 +24,6 @@ console = Console()
 FIT_STYLE = {"fits": "green", "tight": "yellow", "too big": "red"}
 
 
-def _not_ready(command: str, milestone: str) -> None:
-    console.print(f"[yellow]`edgewise {command}` is planned for {milestone}.[/yellow]")
-    console.print("See the roadmap: https://github.com/tanishakarmakar/edgewise#roadmap")
-    raise typer.Exit(code=1)
-
-
 @app.command()
 def version() -> None:
     """Show the installed version."""
@@ -118,7 +112,19 @@ def bench(
         [], "--task", "-t", help="Eval task(s) to score. Repeatable. Omit for performance only."
     ),
     all_tasks: bool = typer.Option(False, "--all-tasks", help="Score every eval task."),
-    prompt_lengths: str = typer.Option("128,1024,4096", help="Comma-separated prompt lengths."),
+    decoding: str = typer.Option(
+        "standard", help="standard | speculative (needs --draft) | prompt_lookup"
+    ),
+    draft: str = typer.Option(None, help="Draft model id for speculative decoding."),
+    draft_tokens: int = typer.Option(4, help="Tokens to guess per step (fixed policy)."),
+    k_policy: str = typer.Option(
+        "cost_aware", help="How many tokens to guess: fixed | heuristic | cost_aware"
+    ),
+    prompt_lengths: str = typer.Option(
+        None,
+        help="Comma-separated prompt lengths for the raw speed pass. "
+        "Default: 128,1024,4096 for standard decoding, none for accelerated decoding.",
+    ),
     repeats: int = typer.Option(5, help="Repeats per prompt length."),
     warmup: int = typer.Option(3, help="Warm-up generations (discarded)."),
     max_tokens: int = typer.Option(128, help="Tokens to generate in the performance pass."),
@@ -133,7 +139,14 @@ def bench(
     from edgewise.evals import TASKS
     from edgewise.store import Store
 
-    variant = Catalog.load().get(model)
+    catalog = Catalog.load()
+    try:
+        variant = catalog.get(model)
+    except KeyError as e:
+        console.print(f"[red]error:[/red] {e.args[0]}")
+        raise typer.Exit(code=1) from e
+    if prompt_lengths is None:
+        prompt_lengths = "128,1024,4096" if decoding == "standard" else ""
     config = BenchConfig(
         tasks=list(TASKS) if all_tasks else task,
         prompt_lengths=[int(n) for n in prompt_lengths.split(",") if n.strip()],
@@ -142,46 +155,76 @@ def bench(
         perf_max_tokens=max_tokens,
         cooldown_s=cooldown,
         force=force,
+        decoding=decoding,
+        num_draft_tokens=draft_tokens,
+        k_policy=k_policy,
     )
     log = (lambda msg: None) if json_out else (lambda msg: console.print(f"[dim]{msg}[/dim]"))
     with Store(db) as store:
         try:
-            report = run_bench(variant, get_backend(variant.backend), config, store, log)
-        except BenchError as e:
-            console.print(f"[red]error:[/red] {e}")
+            report = run_bench(
+                variant,
+                get_backend(variant.backend),
+                config,
+                store,
+                log,
+                draft=catalog.get(draft) if draft else None,
+            )
+        except (BenchError, ValueError, KeyError) as e:
+            console.print(f"[red]error:[/red] {e.args[0] if isinstance(e, KeyError) else e}")
             raise typer.Exit(code=1) from e
 
     if json_out:
         print(report.model_dump_json(indent=2))
         return
+    _print_bench_report(report, db)
 
-    # "\[" stops Rich from reading the bracketed range as a style tag.
-    perf = Table(title=f"{report.model_id}: performance (median \\[p25–p75])", title_justify="left")
-    for col in ("Prompt", "TTFT ms", "Prefill tok/s", "Decode tok/s", "ITL p95 ms", "Peak MB"):
-        perf.add_column(col, justify="right")
-    for p in report.perf:
-        perf.add_row(
-            str(p.prompt_tokens),
-            str(p.ttft_ms),
-            str(p.prefill_tps),
-            str(p.decode_tps),
-            str(p.itl_p95_ms),
-            f"{p.peak_memory_mb:.0f}",
-        )
-    console.print(perf)
+
+def _print_bench_report(report, db: Path) -> None:
+    label = report.model_id
+    if report.decoding != "standard":
+        label += f" · {report.decoding}"
+        if report.draft_model_id:
+            label += f" (draft {report.draft_model_id})"
+
+    if report.perf:
+        # "\\[" stops Rich from reading the bracketed range as a style tag.
+        perf = Table(title=f"{label}: speed (median \\[p25–p75])", title_justify="left")
+        for col in ("Prompt", "TTFT ms", "Prefill tok/s", "Decode tok/s", "ITL p95 ms", "Peak MB"):
+            perf.add_column(col, justify="right")
+        for p in report.perf:
+            perf.add_row(
+                str(p.prompt_tokens),
+                str(p.ttft_ms),
+                str(p.prefill_tps),
+                str(p.decode_tps),
+                str(p.itl_p95_ms),
+                f"{p.peak_memory_mb:.0f}",
+            )
+        console.print(perf)
 
     if report.quality:
-        quality = Table(title="Quality", title_justify="left")
-        for col in ("Task", "Items", "Score", "Valid output", "Mean latency"):
+        quality = Table(title=f"{label}: tasks", title_justify="left")
+        columns = ["Task", "Items", "Score", "Valid", "Decode tok/s", "Latency", "Peak MB"]
+        accelerated = any(q.acceptance_rate is not None for q in report.quality)
+        if accelerated:
+            columns.insert(5, "Guesses accepted")
+        for col in columns:
             quality.add_column(col, justify="right")
         for q in report.quality:
-            quality.add_row(
+            row = [
                 q.task_id,
                 str(q.n),
                 f"{q.mean_score:.2f}",
                 f"{q.valid_rate:.0%}",
+                f"{q.decode_tps:.1f}",
                 f"{q.mean_latency_ms:.0f} ms",
-            )
+                f"{q.peak_memory_mb:.0f}",
+            ]
+            if accelerated:
+                rate = q.acceptance_rate
+                row.insert(5, f"{rate:.0%}" if rate is not None else "—")
+            quality.add_row(*row)
         console.print(quality)
 
     console.print(
@@ -190,16 +233,214 @@ def bench(
     )
 
 
-@app.command()
-def advise() -> None:
-    """Recommend the best quantized model for a memory budget and task."""
-    _not_ready("advise", "milestone 2")
+def _parse_gb(text: str) -> float:
+    """ "4", "4GB", "4.5 gb" or "512MB" -> gigabytes."""
+    cleaned = text.strip().lower().replace(" ", "")
+    if cleaned.endswith("mb"):
+        return float(cleaned[:-2]) / 1000
+    return float(cleaned.removesuffix("gb").removesuffix("g"))
+
+
+STATUS_STYLE = {
+    "recommended": "bold green",
+    "runner-up": "green",
+    "candidate": "",
+    "dominated": "dim",
+    "below quality floor": "yellow",
+    "too big": "red",
+    "not benchmarked": "dim",
+}
 
 
 @app.command()
-def route() -> None:
-    """Answer locally when possible and escalate to a cloud model when needed."""
-    _not_ready("route", "milestone 4")
+def advise(
+    task: str = typer.Option(..., "--task", "-t", help="Eval task the model will be used for."),
+    memory: str = typer.Option(None, help="Memory budget, e.g. 4GB. Default: this device's."),
+    min_score: float = typer.Option(0.0, help="Lowest acceptable task score (0-1)."),
+    prefer: str = typer.Option("balanced", help="balanced | speed | quality"),
+    db: Path = typer.Option(Path("results/edgewise.duckdb"), help="Results database."),
+    json_out: bool = typer.Option(False, "--json", help="Print the recommendation as JSON."),
+) -> None:
+    """Recommend the best model variant for a task and memory budget, from measured results."""
+    from edgewise.advisor import advise as run_advise
+    from edgewise.evals import get_task
+    from edgewise.store import Store
+
+    try:
+        get_task(task)
+        budget = _parse_gb(memory) if memory else detect().model_budget_gb
+        if prefer not in ("balanced", "speed", "quality"):
+            raise ValueError(f"--prefer must be balanced, speed or quality, not {prefer!r}")
+    except (KeyError, ValueError) as e:
+        console.print(f"[red]error:[/red] {e.args[0]}")
+        raise typer.Exit(code=1) from e
+
+    with Store(db) as store:
+        rec = run_advise(Catalog.load(), store, task, budget, min_score, prefer)
+
+    if json_out:
+        print(rec.model_dump_json(indent=2))
+        return
+
+    table = Table(
+        title=f"Advice for {task} · budget {budget:.1f} GB · prefer {prefer}", title_justify="left"
+    )
+    table.add_column("Model", no_wrap=True)
+    for col in ("Score", "vs hi-prec", "Tokens/s", "TTFT ms", "Memory GB"):
+        table.add_column(col, justify="right")
+    table.add_column("Status")
+    for row in rec.rows:
+        e = row.evidence
+        style = STATUS_STYLE[row.status]
+        table.add_row(
+            row.model_id,
+            f"{e.score:.2f}" if e else "—",
+            f"{row.vs_full_precision:.0%}" if row.vs_full_precision is not None else "—",
+            f"{e.decode_tps:.0f}" if e else "—",
+            f"{e.ttft_ms:.0f}" if e else "—",
+            f"{row.memory_gb:.2f}" + ("" if row.memory_measured else " (est.)"),
+            f"[{style}]{row.status}[/]" if style else row.status,
+        )
+    console.print(table)
+    if rec.choice:
+        console.print(f"[bold green]→ {rec.choice.model_id}[/bold green]")
+    for reason in rec.reasons:
+        console.print(f"  {reason}")
+    if rec.choice is None:
+        raise typer.Exit(code=1)
+
+
+def _load_router_config(config_path, local, remote, policy, min_logprob):
+    from edgewise.config import load_config
+
+    config = load_config(config_path)
+    updates = {
+        "local_model": local,
+        "remote_model": remote,
+        "policy": policy,
+        "min_logprob": min_logprob,
+    }
+    config.router = config.router.model_copy(
+        update={k: v for k, v in updates.items() if v is not None}
+    )
+    return type(config).model_validate(config.model_dump())  # re-check overridden values
+
+
+@app.command()
+def route(
+    prompt: str = typer.Argument(..., help="The user message."),
+    system: str = typer.Option(None, help="Optional system prompt."),
+    private: bool = typer.Option(False, help="Never send this request off the device."),
+    json_answer: bool = typer.Option(False, "--expect-json", help="The answer must be JSON."),
+    force: str = typer.Option(None, help="local | remote: skip the cascade."),
+    local: str = typer.Option(None, help="Local model id (default: from config)."),
+    remote: str = typer.Option(None, help="cloud | a larger catalog model id | none."),
+    policy: str = typer.Option(None, help="cascade | local-only | remote-only"),
+    min_logprob: float = typer.Option(None, help="Escalate below this confidence."),
+    max_tokens: int = typer.Option(256, help="Maximum tokens in the answer."),
+    config_path: Path = typer.Option(None, "--config", help="Path to edgewise.toml."),
+    db: Path = typer.Option(Path("results/edgewise.duckdb"), help="Results database."),
+    json_out: bool = typer.Option(False, "--json", help="Print the decision as JSON."),
+) -> None:
+    """Answer on this device when possible; escalate to a stronger model when needed."""
+    from rich.panel import Panel
+
+    from edgewise.router import RouteRequest
+    from edgewise.router.build import build_router
+    from edgewise.schema import Message
+    from edgewise.store import Store
+
+    messages = [Message(role="system", content=system)] if system else []
+    messages.append(Message(role="user", content=prompt))
+    try:
+        config = _load_router_config(config_path, local, remote, policy, min_logprob)
+        request = RouteRequest(
+            messages=messages,
+            max_tokens=max_tokens,
+            private=private,
+            force=force,
+            expect="json" if json_answer else "text",
+        )
+        with Store(db) as store:
+            router = build_router(config, Catalog.load(), store)
+            decision = router.route(request)
+    except (KeyError, ValueError, FileNotFoundError) as e:
+        console.print(f"[red]error:[/red] {e.args[0] if isinstance(e, KeyError) else e}")
+        raise typer.Exit(code=1) from e
+
+    if json_out:
+        print(decision.model_dump_json(indent=2))
+        return
+    where = (
+        "[green]on device[/green]" if decision.route == "local" else "[yellow]escalated[/yellow]"
+    )
+    console.print(Panel(decision.text.strip() or "(empty answer)", title=decision.model_id))
+    console.print(f"{where} · {decision.reason}")
+    console.print(
+        f"[dim]{decision.completion_tokens} tokens · {decision.latency_ms:.0f} ms · "
+        f"cost ${decision.cost_usd:.5f}[/dim]"
+    )
+
+
+@app.command()
+def report(
+    out: Path = typer.Option(Path("results/published"), help="Directory for REPORT.md and charts."),
+    local: str = typer.Option(None, help="Local model id for the routing section."),
+    strong: str = typer.Option(None, help="Stronger model id the cascade escalates to."),
+    memory: str = typer.Option(None, help="Memory budget, e.g. 4GB. Default: this device's."),
+    db: Path = typer.Option(Path("results/edgewise.duckdb"), help="Results database."),
+) -> None:
+    """Write tables and charts from the measured results (for the README)."""
+    from edgewise.report.build import build_report, write_report
+    from edgewise.store import Store
+
+    budget = _parse_gb(memory) if memory else detect().model_budget_gb
+    with Store(db) as store:
+        result = build_report(store, Catalog.load(), budget, local, strong)
+    for path in write_report(result, out):
+        console.print(f"wrote {path}")
+    if not result.sections:
+        console.print("[yellow]no benchmark results yet: run `edgewise bench` first[/yellow]")
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", help="Address to listen on (localhost by default)."),
+    port: int = typer.Option(8080, help="Port to listen on."),
+    local: str = typer.Option(None, help="Local model id (default: from config)."),
+    remote: str = typer.Option(None, help="cloud | a larger catalog model id | none."),
+    policy: str = typer.Option(None, help="cascade | local-only | remote-only"),
+    min_logprob: float = typer.Option(None, help="Escalate below this confidence."),
+    config_path: Path = typer.Option(None, "--config", help="Path to edgewise.toml."),
+    db: Path = typer.Option(Path("results/edgewise.duckdb"), help="Results database."),
+) -> None:
+    """Start a local OpenAI-compatible API backed by the router."""
+    try:
+        import uvicorn
+
+        from edgewise.server import create_app
+    except ImportError as e:
+        console.print("[red]error:[/red] `edgewise serve` needs: uv sync --extra serve")
+        raise typer.Exit(code=1) from e
+    from edgewise.router.build import build_router
+    from edgewise.store import Store
+
+    try:
+        config = _load_router_config(config_path, local, remote, policy, min_logprob)
+        catalog = Catalog.load()
+        catalog.get(config.router.local_model)
+    except (KeyError, ValueError, FileNotFoundError) as e:
+        console.print(f"[red]error:[/red] {e.args[0] if isinstance(e, KeyError) else e}")
+        raise typer.Exit(code=1) from e
+
+    console.print(
+        f"local [bold]{config.router.local_model}[/bold] · escalation "
+        f"[bold]{config.router.remote_model}[/bold] · policy {config.router.policy}"
+    )
+    console.print(f"POST http://{host}:{port}/v1/chat/completions")
+    # The store and the models are created on the server's worker thread (see create_app).
+    app_ = create_app(lambda: build_router(config, catalog, Store(db)))
+    uvicorn.run(app_, host=host, port=port, log_level="warning")
 
 
 if __name__ == "__main__":

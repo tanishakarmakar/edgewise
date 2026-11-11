@@ -51,6 +51,9 @@ def collect(stream: TokenStream, start_ns: int, peak_memory_mb: float = 0.0) -> 
         itl_ms=[d / NS_PER_MS for d in itl_ns],
         peak_memory_mb=peak_memory_mb,
         mean_logprob=statistics.fmean(logprobs) if logprobs else None,
+        decode_ms=decode_ns / NS_PER_MS,
+        proposed_draft_tokens=stream.stats.get("proposed", 0),
+        accepted_draft_tokens=stream.stats.get("accepted", 0),
     )
 
 

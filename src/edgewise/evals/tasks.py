@@ -64,6 +64,15 @@ def _short_reasoning(item: EvalItem) -> list[Message]:
     return [Message(role="system", content=system), Message(role="user", content=item.prompt)]
 
 
+def _text_edit(item: EvalItem) -> list[Message]:
+    system = (
+        "Apply the requested edit to the text. "
+        "Reply with ONLY the full edited text, changing nothing else."
+    )
+    user = f"Text:\n{item.context}\n\nEdit: {item.prompt}"
+    return [Message(role="system", content=system), Message(role="user", content=user)]
+
+
 TASKS: dict[str, Task] = {
     t.id: t
     for t in [
@@ -77,6 +86,13 @@ TASKS: dict[str, Task] = {
         ),
         Task("grounded_qa", "Answer from a given passage", "qa_f1", 48, _grounded_qa),
         Task("short_reasoning", "Arithmetic word problems", "number", 256, _short_reasoning),
+        Task(
+            "text_edit",
+            "Apply a small edit and return the full text",
+            "text_match",
+            200,
+            _text_edit,
+        ),
     ]
 }
 

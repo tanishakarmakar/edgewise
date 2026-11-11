@@ -25,6 +25,13 @@ def test_detect_reports_memory():
     assert 0 <= hw.model_budget_gb < hw.ram_gb
 
 
+def test_swap_usage_is_a_number_or_unknown():
+    from edgewise.hardware import swap_used_gb
+
+    used = swap_used_gb()
+    assert used is None or used >= 0
+
+
 def test_models_ls_lists_catalog():
     result = runner.invoke(app, ["models", "ls"])
     assert result.exit_code == 0
@@ -34,8 +41,3 @@ def test_models_ls_lists_catalog():
 def test_bench_rejects_unknown_model():
     result = runner.invoke(app, ["bench", "--model", "no-such-model"])
     assert result.exit_code != 0
-
-
-def test_unfinished_commands_exit_nonzero():
-    for command in ("advise", "route"):
-        assert runner.invoke(app, [command]).exit_code == 1

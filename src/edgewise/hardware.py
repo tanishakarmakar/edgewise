@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import subprocess
 
@@ -48,6 +49,20 @@ def _ram_bytes() -> int:
     if hasattr(os, "sysconf"):
         return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
     return 0
+
+
+def swap_used_gb() -> float | None:
+    """How much swap the system is using right now (macOS only; None when unknown).
+
+    A machine that is already swapping pages model weights in and out of memory, which makes
+    generation stall and benchmark numbers meaningless.
+    """
+    usage = _sysctl("vm.swapusage")  # "total = 7168.00M  used = 6090.88M  free = ..."
+    match = re.search(r"used = ([\d.]+)([MG])", usage or "")
+    if not match:
+        return None
+    value = float(match.group(1))
+    return round(value / 1024 if match.group(2) == "M" else value, 2)
 
 
 def detect() -> HardwareInfo:
