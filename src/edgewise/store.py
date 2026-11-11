@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS runs (
     hardware JSON,
     backend_versions JSON,
     on_ac_power BOOLEAN,
+    swap_used_gb DOUBLE,
     config JSON,
     est_memory_gb DOUBLE,
     load_s DOUBLE,

@@ -17,7 +17,7 @@ from edgewise.backends.base import Backend, LoadedModel
 from edgewise.bench.metrics import Spread, collect, percentile
 from edgewise.catalog import estimate_memory
 from edgewise.evals.tasks import DEFAULT_DATA_DIR, get_task
-from edgewise.hardware import detect
+from edgewise.hardware import detect, swap_used_gb
 from edgewise.schema import (
     Decoding,
     GenerationResult,
@@ -38,6 +38,10 @@ FILLER = (
     "simulations, and record measurements so that results can be traced and reproduced later. "
 )
 PERF_INSTRUCTION = "\n\nContinue writing about the topic above in plain prose."
+
+
+# Above this much swap in use, measurements are tagged as taken under memory pressure.
+SWAP_WARN_GB = 1.0
 
 
 class BenchError(RuntimeError):
@@ -120,6 +124,11 @@ def run_bench(
     warnings: list[str] = []
     if manifest.on_ac_power is False:
         warnings.append("running on battery: results may be slower and noisier")
+    if (manifest.swap_used_gb or 0) > SWAP_WARN_GB:
+        warnings.append(
+            f"the system is already using {manifest.swap_used_gb:.1f} GB of swap: close other "
+            "apps first, or expect stalls and unreliable numbers"
+        )
 
     # 1. Check memory before loading anything.
     context = max(config.prompt_lengths, default=1024) + config.perf_max_tokens
@@ -225,6 +234,7 @@ def run_bench(
             "hardware": manifest.hardware.model_dump(),
             "backend_versions": manifest.backend_versions,
             "on_ac_power": manifest.on_ac_power,
+            "swap_used_gb": manifest.swap_used_gb,
             "config": config.model_dump(mode="json"),
             "est_memory_gb": estimate_gb,
             "load_s": load_s,
@@ -331,6 +341,7 @@ def _manifest(backend: Backend) -> RunManifest:
         hardware=detect(),
         backend_versions=backend.versions(),
         on_ac_power=_on_ac_power(),
+        swap_used_gb=swap_used_gb(),
     )
 
 

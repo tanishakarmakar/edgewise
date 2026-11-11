@@ -33,6 +33,7 @@ SELECT
     q.model_id,
     r.run_id,
     r.on_ac_power,
+    r.swap_used_gb,
     count(*) AS n_items,
     avg(q.score) AS score,
     avg(CAST(q.valid AS DOUBLE)) AS valid_rate,
@@ -43,7 +44,7 @@ FROM quality q
 JOIN runs r USING (run_id)
 JOIN latest l ON l.model_id = q.model_id AND l.started_at = r.started_at
 WHERE q.task_id = ? AND r.decoding = 'standard'
-GROUP BY q.model_id, r.run_id, r.on_ac_power
+GROUP BY q.model_id, r.run_id, r.on_ac_power, r.swap_used_gb
 """
 
 
@@ -53,6 +54,7 @@ class Evidence(BaseModel):
     model_id: str
     run_id: str
     on_ac_power: bool | None
+    swap_used_gb: float | None = None
     n_items: int
     score: float
     valid_rate: float
@@ -253,4 +255,9 @@ def _reasons(
         )
     if e.on_ac_power is False:
         reasons.append("Measured on battery power: speed may be understated.")
+    if (e.swap_used_gb or 0) > 1.0:
+        reasons.append(
+            f"Measured while the system was using {e.swap_used_gb:.1f} GB of swap: "
+            "speed is unreliable; re-run with other apps closed."
+        )
     return reasons

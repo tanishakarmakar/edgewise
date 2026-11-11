@@ -24,6 +24,7 @@ def record_run(
     logprobs: list[float] | None = None,
     outputs: list[str] | None = None,
     on_ac_power: bool = True,
+    swap_used_gb: float = 0.0,
     tokens: int = 51,
     prompt_tokens: int = 200,
 ) -> str:
@@ -46,6 +47,7 @@ def record_run(
             "hardware": {},
             "backend_versions": {},
             "on_ac_power": on_ac_power,
+            "swap_used_gb": swap_used_gb,
             "config": {},
             "est_memory_gb": peak_mb / 1000,
             "load_s": 1.0,

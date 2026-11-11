@@ -111,6 +111,17 @@ def test_unloads_even_if_generation_fails(setup):
     assert backend.loaded == []
 
 
+def test_memory_pressure_is_warned_about_and_recorded(setup, monkeypatch):
+    import edgewise.bench.runner as runner
+
+    variant, store, config = setup
+    monkeypatch.setattr(runner, "swap_used_gb", lambda: 6.1)
+    report = run_bench(variant, FakeBackend(), config.model_copy(update={"tasks": []}), store)
+    assert any("6.1 GB of swap" in w for w in report.warnings)
+    row = store.query("SELECT swap_used_gb FROM runs WHERE run_id = ?", [report.run_id])
+    assert row == [{"swap_used_gb": 6.1}]
+
+
 def test_eval_data_is_consistent():
     for task in TASKS.values():
         items = task.load_items()

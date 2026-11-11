@@ -93,4 +93,5 @@ class RunManifest(BaseModel):
     hardware: HardwareInfo
     backend_versions: dict[str, str]
     on_ac_power: bool | None
+    swap_used_gb: float | None = None
     notes: str = ""

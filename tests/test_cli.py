@@ -25,6 +25,13 @@ def test_detect_reports_memory():
     assert 0 <= hw.model_budget_gb < hw.ram_gb
 
 
+def test_swap_usage_is_a_number_or_unknown():
+    from edgewise.hardware import swap_used_gb
+
+    used = swap_used_gb()
+    assert used is None or used >= 0
+
+
 def test_models_ls_lists_catalog():
     result = runner.invoke(app, ["models", "ls"])
     assert result.exit_code == 0

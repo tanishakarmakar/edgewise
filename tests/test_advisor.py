@@ -114,6 +114,11 @@ def test_reasons_flag_small_samples_and_battery(catalog, store):
     assert "only 2 test items" in text and "battery" in text
 
 
+def test_reasons_flag_memory_pressure(catalog, store):
+    record_run(store, Q05_4, scores=[1, 1], swap_used_gb=6.1)
+    assert "6.1 GB of swap" in " ".join(advise(catalog, store, "tool_calling", 4.5).reasons)
+
+
 def test_parse_gb():
     assert _parse_gb("4GB") == 4 and _parse_gb("4.5 gb") == 4.5
     assert _parse_gb("512MB") == pytest.approx(0.512) and _parse_gb("3") == 3

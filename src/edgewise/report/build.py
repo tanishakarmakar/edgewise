@@ -25,7 +25,7 @@ WITH latest AS (
     WHERE r.decoding = 'standard'
     GROUP BY p.model_id
 )
-SELECT p.model_id, p.prompt_len, r.on_ac_power, r.est_memory_gb,
+SELECT p.model_id, p.prompt_len, r.on_ac_power, r.swap_used_gb, r.est_memory_gb,
        median(p.prompt_tokens) AS prompt_tokens,
        median(p.ttft_ms) AS ttft_ms,
        median(p.decode_tps) AS decode_tps,
@@ -33,7 +33,7 @@ SELECT p.model_id, p.prompt_len, r.on_ac_power, r.est_memory_gb,
 FROM perf p
 JOIN runs r USING (run_id)
 JOIN latest l ON l.model_id = p.model_id AND l.started_at = r.started_at
-GROUP BY p.model_id, p.prompt_len, r.on_ac_power, r.est_memory_gb
+GROUP BY p.model_id, p.prompt_len, r.on_ac_power, r.swap_used_gb, r.est_memory_gb
 ORDER BY p.model_id, p.prompt_len
 """
 
@@ -99,6 +99,7 @@ def build_report(
     task_rows = store.query(TASK_SQL)
     standard = [r for r in task_rows if r["decoding"] == "standard"]
     battery = any(r["on_ac_power"] is False for r in speed)
+    pressured = any((r["swap_used_gb"] or 0) > 1.0 for r in speed)
 
     # ---------------------------------------------------------------- speed and memory
     if speed:
@@ -107,6 +108,12 @@ def build_report(
         if battery:
             parts += [
                 "> Some of these runs were measured on battery power, which can understate speed.",
+                "",
+            ]
+        if pressured:
+            parts += [
+                "> Some of these runs were measured while the system was swapping memory. "
+                "Treat their speed as unreliable and re-run with other apps closed.",
                 "",
             ]
         parts.append(
