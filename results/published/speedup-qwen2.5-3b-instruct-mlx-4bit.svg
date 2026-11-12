@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 380" width="720" height="380" role="img">
+<title>Decoding speed-up: qwen2.5-3b 4bit</title>
+<desc>Bar chart of decoding speed relative to standard decoding for 5 tasks and 2 accelerated decoding modes.</desc>
+<style>
+:root {
+  --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --deemph: #c3c2b7;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --deemph: #52514e;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+  }
+}
+text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 12px; fill: var(--ink2); }
+.title { font-size: 15px; font-weight: 600; fill: var(--ink); }
+.strong { fill: var(--ink); font-weight: 600; }
+.muted { fill: var(--muted); }
+.tick { fill: var(--muted); font-variant-numeric: tabular-nums; }
+.bg { fill: var(--surface); }
+.grid { stroke: var(--grid); stroke-width: 1; }
+.axis { stroke: var(--axis); stroke-width: 1; }
+.line { fill: none; stroke: var(--s1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ring { stroke: var(--surface); stroke-width: 2; }
+.s1 { fill: var(--s1); } .s2 { fill: var(--s2); } .s3 { fill: var(--s3); }
+.deemph { fill: var(--deemph); }
+</style>
+<rect class="bg" width="720" height="380" rx="8"/>
+<text class="title" x="24" y="30">Decoding speed-up: qwen2.5-3b 4bit</text>
+<text x="24" y="50">Decode speed relative to standard decoding, same model and prompts. Bars left of 1× are slower.</text>
+<rect class="s1" x="24" y="64" width="12" height="12" rx="2"/>
+<text x="42" y="74">prompt lookup</text>
+<rect class="s2" x="147.89999999999998" y="64" width="12" height="12" rx="2"/>
+<text x="165.89999999999998" y="74">speculative (draft qwen2.5-0.5b 4bit)</text>
+<line class="grid" x1="150.0" x2="150.0" y1="90" y2="340"/>
+<text class="tick" x="150.0" y="358" text-anchor="middle">0.5×</text>
+<line class="axis" x1="318.7" x2="318.7" y1="90" y2="340"/>
+<text class="tick" x="318.7" y="358" text-anchor="middle">1× (standard)</text>
+<line class="grid" x1="487.3" x2="487.3" y1="90" y2="340"/>
+<text class="tick" x="487.3" y="358" text-anchor="middle">1.5×</text>
+<line class="grid" x1="656.0" x2="656.0" y1="90" y2="340"/>
+<text class="tick" x="656.0" y="358" text-anchor="middle">2×</text>
+<text x="138" y="115.0" text-anchor="end">tool_calling</text>
+<path class="s1" d="M318.7,96.0 H356.5 Q360.5,96.0 360.5,100.0 V106.0 Q360.5,110.0 356.5,110.0 H318.7 Z"><title>tool_calling, prompt lookup: 1.12× standard speed</title></path>
+<text class="tick" x="366.5" y="107.0" text-anchor="start">1.12×</text>
+<path class="s2" d="M318.7,112.0 H281.5 Q277.5,112.0 277.5,116.0 V122.0 Q277.5,126.0 281.5,126.0 H318.7 Z"><title>tool_calling, speculative (draft qwen2.5-0.5b 4bit): 0.88× standard speed</title></path>
+<text class="tick" x="324.7" y="123.0" text-anchor="start">0.88×</text>
+<text x="138" y="163.0" text-anchor="end">json_extraction</text>
+<path class="s1" d="M318.7,144.0 H376.7 Q380.7,144.0 380.7,148.0 V154.0 Q380.7,158.0 376.7,158.0 H318.7 Z"><title>json_extraction, prompt lookup: 1.18× standard speed</title></path>
+<text class="tick" x="386.7" y="155.0" text-anchor="start">1.18×</text>
+<path class="s2" d="M318.7,160.0 H482.5 Q486.5,160.0 486.5,164.0 V170.0 Q486.5,174.0 482.5,174.0 H318.7 Z"><title>json_extraction, speculative (draft qwen2.5-0.5b 4bit): 1.50× standard speed</title></path>
+<text class="tick" x="492.5" y="171.0" text-anchor="start">1.50×</text>
+<text x="138" y="211.0" text-anchor="end">grounded_qa</text>
+<path class="s1" d="M318.7,192.0 H401.8 Q405.8,192.0 405.8,196.0 V202.0 Q405.8,206.0 401.8,206.0 H318.7 Z"><title>grounded_qa, prompt lookup: 1.26× standard speed</title></path>
+<text class="tick" x="411.8" y="203.0" text-anchor="start">1.26×</text>
+<path class="s2" d="M318.7,208.0 H257.2 Q253.2,208.0 253.2,212.0 V218.0 Q253.2,222.0 257.2,222.0 H318.7 Z"><title>grounded_qa, speculative (draft qwen2.5-0.5b 4bit): 0.81× standard speed</title></path>
+<text class="tick" x="324.7" y="219.0" text-anchor="start">0.81×</text>
+<text x="138" y="259.0" text-anchor="end">short_reasoning</text>
+<path class="s1" d="M318.7,240.0 H363.3 Q367.3,240.0 367.3,244.0 V250.0 Q367.3,254.0 363.3,254.0 H318.7 Z"><title>short_reasoning, prompt lookup: 1.14× standard speed</title></path>
+<text class="tick" x="373.3" y="251.0" text-anchor="start">1.14×</text>
+<path class="s2" d="M318.7,256.0 H426.4 Q430.4,256.0 430.4,260.0 V266.0 Q430.4,270.0 426.4,270.0 H318.7 Z"><title>short_reasoning, speculative (draft qwen2.5-0.5b 4bit): 1.33× standard speed</title></path>
+<text class="tick" x="436.4" y="267.0" text-anchor="start">1.33×</text>
+<text x="138" y="307.0" text-anchor="end">text_edit</text>
+<path class="s1" d="M318.7,288.0 H545.1 Q549.1,288.0 549.1,292.0 V298.0 Q549.1,302.0 545.1,302.0 H318.7 Z"><title>text_edit, prompt lookup: 1.68× standard speed</title></path>
+<text class="tick" x="555.1" y="299.0" text-anchor="start">1.68×</text>
+<path class="s2" d="M318.7,304.0 H439.4 Q443.4,304.0 443.4,308.0 V314.0 Q443.4,318.0 439.4,318.0 H318.7 Z"><title>text_edit, speculative (draft qwen2.5-0.5b 4bit): 1.37× standard speed</title></path>
+<text class="tick" x="449.4" y="315.0" text-anchor="start">1.37×</text>
+</svg>
