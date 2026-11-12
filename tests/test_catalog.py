@@ -25,7 +25,15 @@ def test_memory_estimate_matches_hand_calculation(catalog):
     assert est.weights_gb == pytest.approx(0.86625)
     # KV: 2 × 28 layers × 2 heads × 128 dim × 4096 tokens × 2 bytes = 0.117 GB
     assert est.kv_cache_gb == pytest.approx(0.117440512)
-    assert est.total_gb == pytest.approx(0.86625 + 0.117440512 + 0.3)
+    # overhead: 0.1 at rest + 0.6 of prefill working memory (prompt longer than one chunk)
+    assert est.overhead_gb == pytest.approx(0.7)
+    assert est.total_gb == pytest.approx(0.86625 + 0.117440512 + 0.7)
+
+
+def test_prefill_working_memory_grows_with_the_prompt_then_levels_off(catalog):
+    v = catalog.get("qwen2.5-1.5b-instruct@mlx-4bit")
+    overhead = [estimate_memory(v, n).overhead_gb for n in (0, 512, 1024, 4096)]
+    assert overhead == pytest.approx([0.1, 0.4, 0.7, 0.7])
 
 
 def test_kv_cache_grows_linearly_with_context(catalog):

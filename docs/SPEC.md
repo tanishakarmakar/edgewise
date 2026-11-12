@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | v0.2: implemented; see §17 for where the build differs from this design |
+| **Status** | v0.3: implemented and benchmarked on the reference device; see §17 for where the build differs from this design |
 | **Author** | Tanisha Karmakar |
 | **Last updated** | 2026-11-12 |
 | **Flow diagrams** | [`architecture.html`](architecture.html) (open in a browser) |
@@ -207,7 +207,7 @@ Used by the Advisor to rule out variants that won't fit before running anything.
 ```
 weights_gb   ≈ params_b × bits_per_weight / 8
 kv_cache_gb  ≈ 2 × n_layers × n_kv_heads × head_dim × context_tokens × kv_bytes / 1e9
-overhead_gb  ≈ 0.3                      # runtime buffers; calibrated in milestone 1
+overhead_gb  ≈ 0.1 + 0.6 × min(context_tokens, 1024) / 1024   # base + prefill working memory, fitted to measured peaks (§17)
 required_gb  = weights_gb + kv_cache_gb + overhead_gb (+ draft model if speculative)
 
 fits  ⇔  required_gb ≤ model_budget_gb = RAM − system_reserve (3.5 GB default)
@@ -290,7 +290,7 @@ route_log(request_id, ts, policy, decision, reason, local_model_id, cloud_model_
 6. **Pick:** from the frontier, choose by preference:
    - `speed`: fastest variant meeting the quality floor
    - `quality`: highest quality that fits
-   - `balanced` (default): maximize `quality_rel × normalized_speed`
+   - `balanced` (default): the fastest variant whose score is within 0.05 of the best one, or within one eval item if that is more (the first design, `quality × normalized speed`, recommended fast models with poor scores once real data came in; see §17)
 7. **Explain:** print the choice, the runner-up and *why* (e.g. "Q4 is 1.6× faster but drops tool-call accuracy from 0.92 to 0.71").
 
 **Outputs:** a Rich table in the terminal, `--json` for scripts, and a Pareto chart (`edgewise report advisor`) for the README.
@@ -562,9 +562,21 @@ Sections 1 to 16 are the original design. These are the places the implementatio
 | llama.cpp backend (§6.1) | Milestone 1 | Not built | `llama-cpp-python` ships as source only (a long compile); the plan is to drive the prebuilt `llama-server` over HTTP. MLX covers the reference device. |
 | Charts (§4, §7) | Plotly | Hand-written SVG | No plotting dependency, renders in a GitHub README, follows light/dark mode. |
 | Run hygiene (§6.5) | Warn on battery | Also warn, and tag the run, when the system is already using more than 1 GB of swap | Results measured while the machine swaps are not comparable; found the hard way on the 8 GB reference device. |
+| Advisor `balanced` preference (§7) | Maximize quality × normalized speed | Fastest model within 0.05, or one eval item, of the best score | On real data the product rule recommended a 0.65-score model for tool calling because it was fast. |
+| Allocator cache (§8) | Not considered | The accelerated loop releases MLX's buffer cache after every request and every 64 passes | Passes of varying width left ~130 MB per request in the cache, never released; a benchmark grew by gigabytes and the system swapped. |
+| Prefill in the accelerated loop (§8) | One pass over the prompt | Prompt minus its last token goes through for cache entries only; the last token runs alone | The single pass evaluated the output layer for every prompt position and discarded all but one. |
 
 ### Lessons recorded during the build
 
 - **Verification is not free on this hardware.** The usual assumption behind speculative decoding (checking `k` tokens costs about the same as generating one) does not hold on the A18 Pro: cost grows to roughly 1.8× at 5 tokens and 3× at 9. The best guess length is therefore small unless guesses are almost always right.
-- **The memory model needs a prefill term.** Weights + KV cache underestimates peak memory for long prompts (0.63 GB estimated vs. 1.1 GB measured at 4K tokens on the 0.5B model).
+- **The memory model needed a prefill term.** Weights + KV cache + a fixed 0.3 GB underestimated peak memory by 9 to 43% at 4K-token prompts. Measured peaks grow by about 0.6 GB between a short prompt and a 1K-token one and are flat after that (prompts are processed in chunks), almost independently of model size. With that term the estimate is within −7% to +8% at 4K tokens for all eight benchmarked variants. The constants are fitted on those same runs.
 - **A project under an iCloud-synced folder breaks editable installs.** iCloud marks files inside dot-folders as hidden, and Python 3.12 skips hidden `.pth` files, so the package intermittently became unimportable. The virtual environment now lives outside the synced folder.
+
+### Lessons from the first full benchmark run (2026-11-12)
+
+- **A leak can look like slowness.** The first accelerated run on real models scored identically to standard decoding but ran JSON extraction at 7 tokens/s instead of 47, with single requests stalling for up to 48 seconds. The cause was the allocator cache above, not the algorithm. The same growth explains the system hang during an earlier session.
+- **Greedy verification is exact on paper, not in 16-bit floats.** On the 1.5B model all 168 accelerated outputs matched standard decoding. On the 3B model 162 of 168 did. At three of the four points where text first differed, the top two tokens were tied to within 0.02 in log-probability; a multi-token pass and a single-token pass round differently.
+- **A draft model has a fixed cost.** It must read the whole prompt before its first guess, so it loses on short answers and long prompts even at 96 to 99% acceptance. It paid only on the 3B model with longer outputs (1.3 to 1.5× decode speed). Prompt lookup, which has no such cost, never slowed a whole request.
+- **The calibration is optimistic.** Verification passes during real decoding ran about 20% slower than the pass-cost curve measured at load.
+- **Quantization can change behaviour.** Qwen 1.5B at 4-bit ignored the "think briefly" instruction on the reasoning task (about 7 output tokens, score 0.45); at 8-bit it reasoned (about 80 tokens, score 0.95).
+- **Mean log-probability is a weak confidence signal for very short answers.** In a live check a correct one-word answer escalated, because the mean over two or three tokens is noisy.

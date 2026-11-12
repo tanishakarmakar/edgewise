@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 400" width="720" height="400" role="img">
+<title>Local-first routing: quality vs. how much stays on the device</title>
+<desc>Line chart of mean task score against the share of requests answered locally, as the escalation confidence threshold varies.</desc>
+<style>
+:root {
+  --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --deemph: #c3c2b7;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --deemph: #52514e;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+  }
+}
+text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 12px; fill: var(--ink2); }
+.title { font-size: 15px; font-weight: 600; fill: var(--ink); }
+.strong { fill: var(--ink); font-weight: 600; }
+.muted { fill: var(--muted); }
+.tick { fill: var(--muted); font-variant-numeric: tabular-nums; }
+.bg { fill: var(--surface); }
+.grid { stroke: var(--grid); stroke-width: 1; }
+.axis { stroke: var(--axis); stroke-width: 1; }
+.line { fill: none; stroke: var(--s1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ring { stroke: var(--surface); stroke-width: 2; }
+.s1 { fill: var(--s1); } .s2 { fill: var(--s2); } .s3 { fill: var(--s3); }
+.deemph { fill: var(--deemph); }
+</style>
+<rect class="bg" width="720" height="400" rx="8"/>
+<text class="title" x="24" y="30">Local-first routing: quality vs. how much stays on the device</text>
+<text x="24" y="50">qwen2.5-1.5b 4bit answers first; unsure answers escalate to qwen2.5-3b 4bit.</text>
+<line class="grid" x1="56" x2="684" y1="348.0" y2="348.0"/>
+<text class="tick" x="48" y="352.0" text-anchor="end">0.8</text>
+<line class="grid" x1="56" x2="684" y1="287.0" y2="287.0"/>
+<text class="tick" x="48" y="291.0" text-anchor="end">0.85</text>
+<line class="grid" x1="56" x2="684" y1="226.0" y2="226.0"/>
+<text class="tick" x="48" y="230.0" text-anchor="end">0.9</text>
+<line class="grid" x1="56" x2="684" y1="165.0" y2="165.0"/>
+<text class="tick" x="48" y="169.0" text-anchor="end">0.95</text>
+<line class="grid" x1="56" x2="684" y1="104.0" y2="104.0"/>
+<text class="tick" x="48" y="108.0" text-anchor="end">1</text>
+<text class="tick" x="56.0" y="366" text-anchor="middle">0%</text>
+<text class="tick" x="213.0" y="366" text-anchor="middle">25%</text>
+<text class="tick" x="370.0" y="366" text-anchor="middle">50%</text>
+<text class="tick" x="527.0" y="366" text-anchor="middle">75%</text>
+<text class="tick" x="684.0" y="366" text-anchor="middle">100%</text>
+<line class="axis" x1="56" x2="684" y1="348" y2="348"/>
+<text class="muted" x="370" y="388" text-anchor="middle">Share of requests answered on the device</text>
+<text class="muted" x="16" y="74">Mean task score</text>
+<polyline class="line" points="56.0,194.6 63.5,194.6 71.0,194.6 78.4,194.6 85.9,194.6 93.4,194.0 100.9,194.0 108.3,194.0 115.8,194.0 130.8,194.0 138.2,194.0 145.7,194.0 153.2,194.0 160.7,194.0 168.1,194.0 175.6,194.0 183.1,194.0 190.6,194.0 198.0,194.0 205.5,194.0 213.0,194.0 220.5,194.0 228.0,194.0 242.9,194.0 250.4,194.0 257.9,194.0 265.3,194.0 272.8,194.0 280.3,194.0 287.8,194.0 295.2,197.7 310.2,199.8 317.7,199.8 325.1,199.8 332.6,199.8 340.1,199.8 347.6,199.8 355.0,199.8 362.5,199.8 370.0,199.8 377.5,199.8 385.0,196.8 392.4,196.8 399.9,196.8 407.4,196.8 414.9,196.8 422.3,196.8 429.8,211.4 437.3,211.4 444.8,211.4 452.2,211.4 467.2,215.0 474.7,215.0 482.1,215.0 489.6,215.0 497.1,215.0 512.0,231.6 519.5,246.1 527.0,246.1 534.5,231.6 542.0,231.6 549.4,231.6 564.4,231.6 571.9,231.6 579.3,231.6 586.8,246.1 594.3,246.1 601.8,246.1 609.2,246.1 616.7,246.1 624.2,246.1 631.7,231.6 639.1,246.1 646.6,246.1 654.1,246.1 661.6,260.6 669.0,275.2 676.5,289.7 684.0,304.2"/>
+<circle class="s1 ring" cx="56.0" cy="194.6" r="5"/>
+<text x="66.0" y="214.6" text-anchor="start">everything escalated: 0.93</text>
+<circle class="s1 ring" cx="684.0" cy="304.2" r="5"/>
+<text x="674.0" y="324.2" text-anchor="end">everything local: 0.84</text>
+<circle class="s1 ring" cx="579.3" cy="231.6" r="7"/>
+<text class="strong" x="569.3" y="257.6" text-anchor="end">recommended: 83% local, score 0.90</text>
+</svg>

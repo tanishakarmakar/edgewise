@@ -64,6 +64,8 @@ class CascadeEvaluation(BaseModel):
     # the fitting half of the items (on all of them when there are too few to split).
     target: float
     recommended: CascadePoint | None
+    # The same threshold applied to every item: the point on `points` it corresponds to.
+    recommended_overall: CascadePoint | None = None
     # How that threshold does on the other half. None when there were too few items to split,
     # in which case `recommended` is an optimistic estimate.
     heldout: HeldOut | None = None
@@ -169,5 +171,6 @@ def evaluate_cascade(
         points=curve(keys),
         target=target,
         recommended=recommended,
+        recommended_overall=replay(recommended.threshold, keys) if recommended else None,
         heldout=heldout,
     )

@@ -48,13 +48,35 @@ def test_pareto_keeps_ties():
     assert pareto_frontier([ev("a", 0.5, 50), ev("b", 0.5, 50)]) == {"a", "b"}
 
 
-def test_balanced_picks_best_quality_times_speed(catalog, benchmarked):
-    rec = advise(catalog, benchmarked, "tool_calling", budget_gb=4.5)
-    # balanced = score × speed/fastest: 0.5b-8bit → 0.6×0.75 = 0.45 beats 0.5b-4bit → 0.40
-    assert rec.choice.model_id == Q05_8
-    s = status(rec)
+def test_balanced_does_not_trade_real_quality_for_speed(catalog, store):
+    record_run(store, Q05_4, scores=[1] * 13 + [0] * 7, tps=120, peak_mb=400)  # 0.65
+    record_run(store, Q15_4, scores=[1] * 16 + [0] * 4, tps=50, peak_mb=1100)  # 0.80
+    record_run(store, Q3_4, scores=[1] * 20, tps=24, peak_mb=2100)  # 1.00
+    rec = advise(catalog, store, "tool_calling", budget_gb=4.5)
+    # Nothing is close to the 3B's score, so speed does not get a say.
+    assert rec.choice.model_id == Q3_4 and rec.runner_up.model_id == Q15_4
+
+
+def test_slower_models_with_no_better_score_are_dominated(catalog, benchmarked):
+    s = status(advise(catalog, benchmarked, "tool_calling", budget_gb=4.5))
     assert s[Q15_8] == "dominated" and s[Q3_8] == "dominated"
-    assert rec.runner_up is not None
+
+
+def test_balanced_takes_the_faster_of_two_close_scores(catalog, store):
+    record_run(store, Q05_4, scores=[1] * 13 + [0] * 7, tps=120, peak_mb=400)  # 0.65
+    record_run(store, Q15_4, scores=[1] * 19 + [0], tps=50, peak_mb=1100)  # 0.95
+    record_run(store, Q3_4, scores=[1] * 20, tps=24, peak_mb=2100)  # 1.00
+    rec = advise(catalog, store, "tool_calling", budget_gb=4.5)
+    # 0.95 is within 0.05 of the best, so the 2x faster model wins; 0.65 is not close.
+    assert rec.choice.model_id == Q15_4 and rec.runner_up.model_id == Q3_4
+
+
+def test_balanced_treats_a_one_item_gap_as_a_tie(catalog, store):
+    record_run(store, Q05_4, scores=[1] * 15 + [0], tps=120, peak_mb=400)  # 0.94: one item off
+    record_run(store, Q3_4, scores=[1] * 16, tps=24, peak_mb=2100)  # 1.00
+    rec = advise(catalog, store, "tool_calling", budget_gb=4.5)
+    assert rec.choice.model_id == Q05_4
+    assert any("5.0x faster and scores 0.06 lower" in reason for reason in rec.reasons)
 
 
 def test_prefer_quality_and_speed(catalog, benchmarked):

@@ -24,6 +24,8 @@ except ImportError as e:  # pragma: no cover - depends on the optional extra
 
 # Prompt lookup guesses are free, so it can afford to guess further ahead than a draft model.
 LOOKUP_K_MAX = 16
+# Free MLX's allocator cache this often (in forward passes) during accelerated decoding.
+CLEAR_CACHE_EVERY = 64
 DRAFT_K_MAX = 8
 CALIBRATION_WIDTHS = (1, 2, 3, 5, 9, 17)
 CALIBRATION_REPEATS = 3
@@ -180,17 +182,30 @@ class MLXBackend:
         count = 0
         # Pin model memory like mlx-lm's own generate loop does; without this macOS pages
         # weights out under memory pressure and single passes stall for seconds.
+        clear_cache = _mx_memory("clear_cache")
         with wired_limit(mlx_model):
-            for step in steps:
-                now = time.perf_counter_ns()  # tokens accepted in one pass arrive together
-                stream.stats["proposed"] += step.proposed
-                stream.stats["accepted"] += step.accepted
-                for token, logprob in zip(step.tokens, step.logprobs, strict=True):
-                    count += 1
-                    if token not in eos:
-                        detokenizer.add_token(token)
-                    if token in eos or count == max_tokens:
-                        detokenizer.finalize()
-                    yield TokenEvent(
-                        token_id=token, text=detokenizer.last_segment, t_ns=now, logprob=logprob
-                    )
+            try:
+                for passes, step in enumerate(steps, start=1):
+                    now = time.perf_counter_ns()  # tokens accepted in one pass arrive together
+                    stream.stats["proposed"] += step.proposed
+                    stream.stats["accepted"] += step.accepted
+                    for token, logprob in zip(step.tokens, step.logprobs, strict=True):
+                        count += 1
+                        if token not in eos:
+                            detokenizer.add_token(token)
+                        if token in eos or count == max_tokens:
+                            detokenizer.finalize()
+                        yield TokenEvent(
+                            token_id=token,
+                            text=detokenizer.last_segment,
+                            t_ns=now,
+                            logprob=logprob,
+                        )
+                    if passes % CLEAR_CACHE_EVERY == 0:
+                        clear_cache()
+            finally:
+                # Passes of varying width leave differently sized buffers in MLX's allocator
+                # cache, which it keeps: measured at ~130 MB per request on a 1.5B model,
+                # never released. Unchecked, a benchmark grows by gigabytes and the system
+                # starts swapping. mlx-lm's own loop clears the cache for the same reason.
+                clear_cache()

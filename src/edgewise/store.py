@@ -94,6 +94,18 @@ class Store:
         self.db = duckdb.connect(str(path), read_only=read_only)
         if not read_only:
             self.db.execute(SCHEMA)
+            self._add_missing_columns()
+
+    def _add_missing_columns(self) -> None:
+        """Upgrade a database written by an older version: add columns SCHEMA has gained."""
+        columns = "SELECT table_name, column_name, data_type FROM information_schema.columns"
+        with duckdb.connect(":memory:") as reference:
+            reference.execute(SCHEMA)
+            wanted = reference.execute(columns).fetchall()
+        have = {(table, column) for table, column, _ in self.db.execute(columns).fetchall()}
+        for table, column, data_type in wanted:
+            if (table, column) not in have:
+                self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {data_type}")
 
     def close(self) -> None:
         self.db.close()

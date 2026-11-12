@@ -16,6 +16,10 @@ from edgewise.schema import ModelVariant
 from edgewise.store import Store
 
 Preference = Literal["balanced", "speed", "quality"]
+# "balanced" treats scores this close to the best as equally good and then picks the fastest.
+# A gap of a single eval item also counts as equal, however few items there are: with 16
+# items one answer is worth 0.06, and that is noise, not a reason to run a 5x slower model.
+BALANCED_TOLERANCE = 0.05
 Status = Literal[
     "recommended", "runner-up", "candidate", "dominated", "below quality floor", "too big",
     "not benchmarked",
@@ -187,8 +191,13 @@ def _preference_key(e: Evidence, candidates: list[Evidence], prefer: Preference)
         return (e.decode_tps, e.score)
     if prefer == "quality":
         return (e.score, e.decode_tps)
-    fastest = max(c.decode_tps for c in candidates) or 1.0
-    return (e.score * e.decode_tps / fastest, e.score)
+    # Balanced: don't give up quality that matters, then take speed. Models within
+    # BALANCED_TOLERANCE of the best score rank by speed; the rest rank below them by score.
+    best = max(c.score for c in candidates)
+    one_item = 1 / min(c.n_items for c in candidates if c.n_items) if candidates else 0
+    if e.score >= best - max(BALANCED_TOLERANCE, one_item) - 1e-9:
+        return (1, e.decode_tps, e.score)
+    return (0, e.score, e.decode_tps)
 
 
 def _vs_full_precision(
@@ -243,10 +252,14 @@ def _reasons(
         r = runner_up.evidence
         speed, quality = e.decode_tps / r.decode_tps if r.decode_tps else 0, e.score - r.score
         faster = f"{speed:.1f}x faster" if speed >= 1 else f"{1 / speed:.1f}x slower"
-        better = f"{abs(quality):.2f} {'higher' if quality >= 0 else 'lower'}"
+        if abs(quality) < 0.005:
+            better = f"scores the same ({e.score:.2f})"
+        else:
+            direction = "higher" if quality > 0 else "lower"
+            better = f"scores {abs(quality):.2f} {direction} ({e.score:.2f} vs {r.score:.2f})"
         reasons.append(
-            f"Compared with {runner_up.model_id}, it is {faster} and scores {better} "
-            f"({e.score:.2f} vs {r.score:.2f}); preference: {prefer}."
+            f"Compared with {runner_up.model_id}, it is {faster} and {better}; "
+            f"preference: {prefer}."
         )
     if e.n_items < 30:
         reasons.append(

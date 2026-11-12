@@ -11,7 +11,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from edgewise.advisor import advise
-from edgewise.catalog import Catalog
+from edgewise.catalog import Catalog, estimate_memory
 from edgewise.evals import TASKS
 from edgewise.report import svg
 from edgewise.router import evaluate_cascade
@@ -49,7 +49,8 @@ SELECT q.model_id, q.task_id, r.decoding, r.draft_model_id, r.k_policy, r.run_id
        count(*) AS n_items,
        avg(q.score) AS score,
        sum(greatest(q.completion_tokens - 1, 0)) / nullif(sum(q.decode_ms) / 1000, 0) AS decode_tps,
-       sum(q.accepted_draft_tokens) / nullif(sum(q.proposed_draft_tokens), 0) AS acceptance
+       sum(q.accepted_draft_tokens) / nullif(sum(q.proposed_draft_tokens), 0) AS acceptance,
+       avg(q.latency_ms) AS latency_ms
 FROM quality q
 JOIN runs r USING (run_id)
 JOIN latest l ON l.model_id = q.model_id AND l.task_id = q.task_id
@@ -61,7 +62,7 @@ GROUP BY ALL
 IDENTICAL_SQL = """
 SELECT count(*) AS n, sum(CAST(a.output_text = b.output_text AS INTEGER)) AS same
 FROM quality a JOIN quality b USING (task_id, item_id)
-WHERE a.run_id = ? AND b.run_id = ?
+WHERE a.run_id = ? AND b.run_id = ? AND a.task_id = ?
 """
 
 
@@ -99,7 +100,14 @@ def build_report(
     task_rows = store.query(TASK_SQL)
     standard = [r for r in task_rows if r["decoding"] == "standard"]
     battery = any(r["on_ac_power"] is False for r in speed)
-    pressured = any((r["swap_used_gb"] or 0) > 1.0 for r in speed)
+    pressured = list(
+        dict.fromkeys(
+            svg.short_name(r["model_id"]) for r in speed if (r["swap_used_gb"] or 0) > 1.0
+        )
+    )
+    # Smallest model first, the order the catalog lists them in.
+    position = {v.id: i for i, v in enumerate(catalog)}
+    speed.sort(key=lambda r: (position.get(r["model_id"], len(position)), r["prompt_len"]))
 
     # ---------------------------------------------------------------- speed and memory
     if speed:
@@ -112,8 +120,8 @@ def build_report(
             ]
         if pressured:
             parts += [
-                "> Some of these runs were measured while the system was swapping memory. "
-                "Treat their speed as unreliable and re-run with other apps closed.",
+                "> These runs started with more than 1 GB of swap already in use, so their "
+                f"speed may be understated: {', '.join(pressured)}.",
                 "",
             ]
         parts.append(
@@ -133,10 +141,23 @@ def build_report(
         )
         peaks: dict[str, tuple[float, float]] = {}
         for r in speed:
-            est, peak = r["est_memory_gb"], r["peak_memory_mb"] / 1000
+            peak = r["peak_memory_mb"] / 1000
             if r["model_id"] not in peaks or peak > peaks[r["model_id"]][1]:
+                try:
+                    variant = catalog.get(r["model_id"])
+                    est = estimate_memory(variant, int(r["prompt_tokens"])).total_gb
+                except KeyError:  # benchmarked, then removed from the catalog
+                    est = r["est_memory_gb"]
                 peaks[r["model_id"]] = (est, peak)
-        parts += ["", "### Memory estimate vs. measured peak", ""]
+        parts += [
+            "",
+            "### Memory estimate vs. measured peak",
+            "",
+            "The estimate is the current memory model at the prompt length where the peak was "
+            "measured. Its working-memory constants were fitted on runs like these, so this "
+            "shows how well the model fits, not how well it predicts a new device.",
+            "",
+        ]
         parts.append(
             _table(
                 ["Model", "Estimated (GB)", "Measured peak (GB)", "Error"],
@@ -200,8 +221,9 @@ def build_report(
             base = baseline.get((r["model_id"], r["task_id"]))
             if base is None or not base["decode_tps"] or not r["decode_tps"]:
                 continue
-            same = store.query(IDENTICAL_SQL, [r["run_id"], base["run_id"]])[0]
+            same = store.query(IDENTICAL_SQL, [r["run_id"], base["run_id"], r["task_id"]])[0]
             speedup = r["decode_tps"] / base["decode_tps"]
+            whole = base["latency_ms"] / r["latency_ms"] if r["latency_ms"] else None
             label = _decoding_label(r)
             by_model.setdefault(r["model_id"], {}).setdefault(r["task_id"], {})[label] = speedup
             rows.append(
@@ -212,6 +234,7 @@ def build_report(
                     f"{base['decode_tps']:.1f}",
                     f"{r['decode_tps']:.1f}",
                     f"{speedup:.2f}×",
+                    f"{whole:.2f}×" if whole else "—",
                     f"{r['acceptance']:.0%}" if r["acceptance"] is not None else "—",
                     f"{same['same']}/{same['n']}",
                 ]
@@ -221,19 +244,25 @@ def build_report(
             parts += [
                 "## Accelerated decoding",
                 "",
-                "Same model, same prompts. “Identical outputs” counts items whose text matches "
-                "standard decoding exactly.",
+                "Same model, same prompts. “Decode speed-up” compares tokens per second after "
+                "the first token; “Whole request” compares total time per request, which also "
+                "includes reading the prompt (and, for a draft model, the draft reading it "
+                "too). “Identical outputs” counts items whose text matches standard decoding "
+                "exactly.",
                 "",
                 _table(
                     ["Model", "Decoding", "Task", "Standard tok/s", "Accelerated tok/s",
-                     "Speed-up", "Guesses accepted", "Identical outputs"],
+                     "Decode speed-up", "Whole request", "Guesses accepted", "Identical outputs"],
                     sorted(rows),
                     align_right_from=3,
                 ),
                 "",
             ]  # fmt: skip
-            for model_id, speedups in by_model.items():
-                series = list(dict.fromkeys(name for t in speedups.values() for name in t))
+            for model_id, by_task in by_model.items():
+                # Same task order and same colour per decoding mode in every chart.
+                speedups = {t: by_task[t] for t in TASKS if t in by_task}
+                names = {name for t in speedups.values() for name in t}
+                series = sorted(names, key=lambda n: (not n.startswith("prompt lookup"), n))
                 name = f"speedup-{model_id.replace('@', '-')}.svg"
                 charts[name] = svg.speedup_chart(speedups, series, model_id)
                 parts += [f"![Decoding speed-up for {svg.short_name(model_id)}]({name})", ""]
@@ -248,7 +277,9 @@ def build_report(
             sections.append("router")
             charts["cascade.svg"] = svg.cascade_chart(
                 [(p.local_share, p.score) for p in ev.points],
-                (ev.recommended.local_share, ev.recommended.score) if ev.recommended else None,
+                (ev.recommended_overall.local_share, ev.recommended_overall.score)
+                if ev.recommended_overall
+                else None,
                 local_model,
                 strong_model,
             )
