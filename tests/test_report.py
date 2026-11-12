@@ -45,7 +45,7 @@ def test_full_report(populated):
     assert "tool_calling (n=4)" in md and "| qwen2.5-1.5b 4bit | 0.75 |" in md
     assert "2.00×" in md and "2/2" in md  # prompt lookup: twice as fast, identical outputs
     assert "0.83×" in md and "1/2" in md  # speculative: slower here, one output differed
-    assert "upper bound" in md
+    assert "upper bound" in md  # 4 shared items: too few to hold any out
     for name, text in r.charts.items():
         assert name.endswith(".svg") and parse(text).tag.endswith("svg")
         assert f"]({name})" in md
@@ -133,3 +133,11 @@ def test_crowded_labels_are_dropped_not_stacked():
     labels = [line for line in text.splitlines() if line.startswith("<text") and "model-" in line]
     assert 1 <= len(labels) < 8
     assert text.count("<circle") == 8 + 2  # every point is still drawn (plus 2 legend dots)
+
+
+def test_report_uses_held_out_items_when_there_are_enough(store):
+    logprobs = [-0.1 - (i % 10) * 0.1 for i in range(40)]
+    record_run(store, Q05, scores=[1 if lp > -0.5 else 0 for lp in logprobs], logprobs=logprobs)
+    record_run(store, Q3, scores=[1] * 40)
+    md = build_report(store, Catalog.load(), 4.5, local_model=Q05, strong_model=Q3).markdown
+    assert "played no part in choosing it" in md and "upper bound" not in md

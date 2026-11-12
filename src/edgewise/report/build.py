@@ -252,6 +252,33 @@ def build_report(
                 local_model,
                 strong_model,
             )
+            # Report on held-out items when there are enough to split; otherwise say so.
+            held, pick = ev.heldout, ev.recommended
+            local_only = held.local_only_score if held else ev.local_only_score
+            strong_only = held.strong_only_score if held else ev.strong_only_score
+            rows = [
+                ["Local only", "100%", f"{local_only:.2f}"],
+                ["Escalate everything", "0%", f"{strong_only:.2f}"],
+            ]
+            if pick is not None:
+                shown = held.point if held else pick
+                rows.append(
+                    [
+                        f"Cascade (escalate below {pick.threshold:.2f})",
+                        f"{shown.local_share:.0%}",
+                        f"{shown.score:.2f}",
+                    ]
+                )
+            if held:
+                caveat = (
+                    f"The threshold was chosen on {ev.n_items - held.n_items} items and the "
+                    f"table reports the other {held.n_items}, which played no part in choosing it."
+                )
+            else:
+                caveat = (
+                    "There are too few items to hold some out, so the threshold was chosen on "
+                    "the same items it is reported on: treat the cascade row as an upper bound."
+                )
             parts += [
                 "## Local-first routing",
                 "",
@@ -259,27 +286,9 @@ def build_report(
                 f"({', '.join(ev.tasks)}): {svg.short_name(local_model)} answers first and "
                 f"escalates to {svg.short_name(strong_model)} when its confidence is low.",
                 "",
-                _table(
-                    ["Policy", "Answered on device", "Mean score"],
-                    [
-                        ["Local only", "100%", f"{ev.local_only_score:.2f}"],
-                        ["Escalate everything", "0%", f"{ev.strong_only_score:.2f}"],
-                    ]
-                    + (
-                        [
-                            [
-                                f"Cascade (escalate below {ev.recommended.threshold:.2f})",
-                                f"{ev.recommended.local_share:.0%}",
-                                f"{ev.recommended.score:.2f}",
-                            ]
-                        ]
-                        if ev.recommended
-                        else []
-                    ),
-                ),
+                _table(["Policy", "Answered on device", "Mean score"], rows),
                 "",
-                "The threshold was chosen on the same items it is reported on, so this is an "
-                "upper bound; a held-out set is needed for a fair estimate.",
+                caveat,
                 "",
                 "![Cascade quality vs. share answered locally](cascade.svg)",
                 "",

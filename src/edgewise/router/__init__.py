@@ -8,7 +8,7 @@ from edgewise.router.core import (
     RouterStats,
     Tier,
 )
-from edgewise.router.evaluate import CascadeEvaluation, CascadePoint, evaluate_cascade
+from edgewise.router.evaluate import CascadeEvaluation, CascadePoint, HeldOut, evaluate_cascade
 from edgewise.router.rules import Connectivity, detect_pii
 
 __all__ = [
@@ -16,6 +16,7 @@ __all__ = [
     "CascadePoint",
     "Connectivity",
     "EscalationFailed",
+    "HeldOut",
     "RouteDecision",
     "RouteRequest",
     "Router",
