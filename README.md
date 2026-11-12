@@ -63,7 +63,7 @@ Everything is built on one foundation: a **backend interface** (MLX today), a **
 
 For one model, the runner checks the memory estimate against the device budget, loads the model, warms it up, measures raw speed at three prompt lengths (time to first token, prefill and decode tokens/s, inter-token latency, peak memory; median and interquartile range over repeats), scores it on the eval tasks, and unloads it even if something fails. Every run records the hardware, library versions, git commit, power source and swap usage.
 
-Eval tasks (hand-written seed sets, 6 to 10 items each; small, so treat scores as rough):
+Eval tasks (84 hand-written items, 12 to 20 per task; still small, so treat score differences of a few points as noise):
 
 | Task | What the model must do | Scoring |
 |---|---|---|
@@ -111,7 +111,7 @@ Reference device: **Apple A18 Pro, 8 GB RAM**. These were taken on battery power
 | 1,053 | 945 ms | 81 tokens/s | 662 MB |
 | 4,125 | 4,375 ms | 61 tokens/s | 1,105 MB |
 
-Task scores for the same model: grounded QA 1.00, JSON extraction 0.97, tool calling 0.60, short reasoning 0.38 (8 to 10 items per task, so one item is worth 0.10 to 0.13).
+Task scores for the same model: grounded QA 1.00, JSON extraction 0.97, tool calling 0.60, short reasoning 0.38 (measured on the first version of the eval sets, 8 to 10 items per task, so one item was worth 0.10 to 0.13).
 
 **Cost of verifying several tokens in one pass (Qwen 2.5 3B, MLX 4-bit)**
 
@@ -130,7 +130,7 @@ This is why the Accelerator's guess length is cost-aware rather than fixed.
 
 ```bash
 uv sync --all-extras
-uv run pytest            # ~190 tests, a couple of seconds, no model downloads
+uv run pytest            # ~360 tests (about half check the eval data), seconds, no model downloads
 uv run ruff check . && uv run ruff format --check .
 ```
 
@@ -155,7 +155,7 @@ Design notes: [technical spec](docs/SPEC.md) · [architecture and flow diagrams]
 ## Known gaps
 
 - Only one of the ten catalog models has been benchmarked; Advisor and Router results depend on the rest.
-- Eval sets are small seed sets; they need to grow before score differences mean much.
+- Eval sets are hand-written and small (12 to 20 items per task); public datasets would make scores more robust.
 - The memory estimate needs a prefill term (see above).
 - MLX is the only local backend. llama.cpp (GGUF) is planned.
 - The Router's streaming sends the answer after the routing decision, not token by token.

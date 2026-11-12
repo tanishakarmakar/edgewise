@@ -6,3 +6,15 @@
 {"id": "math-06", "prompt": "A test suite has 240 tests and 15% of them fail. How many tests pass?", "expected": 204}
 {"id": "math-07", "prompt": "A model generates 25 tokens per second. How many seconds does it take to generate 1,000 tokens?", "expected": 40}
 {"id": "math-08", "prompt": "A warehouse has 4 shelves with 18 boxes each. 23 boxes are shipped out. How many boxes remain?", "expected": 49}
+{"id": "math-09", "prompt": "A battery charges from 20% to 80% of its 50 kWh capacity. How many kWh are added?", "expected": 30}
+{"id": "math-10", "prompt": "A car uses 6 litres of fuel per 100 km. How many litres does it need for 250 km?", "expected": 15}
+{"id": "math-11", "prompt": "Three sensors cost ₹1,200 each and a controller costs ₹4,500. What is the total cost in rupees?", "expected": 8100}
+{"id": "math-12", "prompt": "A download of 900 MB runs at 15 MB per second. How many seconds does it take?", "expected": 60}
+{"id": "math-13", "prompt": "A team fixes 7 bugs a day. How many days does it take to fix 84 bugs?", "expected": 12}
+{"id": "math-14", "prompt": "A shift starts at 08:15 and ends at 16:45. How many minutes long is it?", "expected": 510}
+{"id": "math-15", "prompt": "A parking garage has 6 levels with 45 spaces each. 198 spaces are taken. How many spaces are free?", "expected": 72}
+{"id": "math-16", "prompt": "A vehicle accelerates from 0 to 27 metres per second in 9 seconds. What is its average acceleration in metres per second squared?", "expected": 3}
+{"id": "math-17", "prompt": "A printer produces 12 parts per hour. How many parts does it make in 7.5 hours?", "expected": 90}
+{"id": "math-18", "prompt": "One test takes 40 seconds. How many minutes does it take to run 30 tests one after another?", "expected": 20}
+{"id": "math-19", "prompt": "An order of 250 units is packed into boxes of 12. How many full boxes are there?", "expected": 20}
+{"id": "math-20", "prompt": "The price of a part drops from ₹800 to ₹680. By what percent did it drop?", "expected": 15}

@@ -61,7 +61,7 @@ def test_bench_end_to_end_with_fake_backend(setup):
     # Everything persisted; the model was unloaded.
     assert store.count("runs", report.run_id) == 1
     assert store.count("perf", report.run_id) == 2 * 3
-    assert store.count("quality", report.run_id) == 8 + 8
+    assert store.count("quality", report.run_id) == 16 + 20
     assert backend.loaded == []
 
 
