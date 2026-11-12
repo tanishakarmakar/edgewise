@@ -10,7 +10,29 @@ Edgewise is a toolkit for running large language models on everyday devices (lap
 | **Accelerator** | How much faster can it generate without changing its output? | `edgewise bench --decoding …` |
 | **Router** | Which requests can stay on the device, and which need a stronger model? | `edgewise route`, `edgewise serve` |
 
-![edgewise models ls](docs/img/models-ls.svg)
+![The Router page: a request the small model was unsure about, escalated to the bigger model](docs/img/demo-router.png)
+
+## Demo page
+
+`edgewise serve` starts a local page at `http://127.0.0.1:8080/` next to the API. It has one tab per feature and runs entirely on the device: no external fonts, scripts or network calls.
+
+```bash
+uv sync --extra mlx --extra serve
+uv run edgewise serve \
+  --local qwen2.5-0.5b-instruct@mlx-4bit \
+  --remote qwen2.5-1.5b-instruct@mlx-4bit \
+  --min-logprob -0.14
+```
+
+- **Router** (above): type a request and watch it go through the hard rules, the small model and the confidence check. The answer streams in as it is generated. If the small model's answer is not kept, it stays available in a collapsed block and the bigger model's answer replaces it.
+- **Advisor**: pick a task, a memory budget and a quality floor, and see every benchmarked model on a speed-versus-score chart with the recommendation and its reasons.
+- **Accelerator**: run the same prompt with standard decoding and with prompt lookup. Text that was guessed and accepted is highlighted, and a replay plays both runs back together at their measured pace.
+
+| Advisor | Accelerator |
+|---|---|
+| ![Advisor tab](docs/img/demo-advisor.png) | ![Accelerator tab](docs/img/demo-accelerator.png) |
+
+The Router screenshot uses Qwen 0.5B answering and Qwen 1.5B as the bigger model. The Accelerator screenshot is a single run on Qwen 1.5B (2.09× here; 1.93× in the benchmark below). On an 8 GB machine, prefer that small pair for a live demo: with the 1.5B and 3B models both loaded and other apps open, swap use rose to 2.5 GB.
 
 ## Status
 
@@ -22,6 +44,7 @@ All five parts are implemented, covered by unit tests, and have now been run on 
 | Accelerator (speculative + prompt-lookup decoding) | ✅ | ✅ 1.5B and 3B models; text matches standard decoding on 330 of 336 items |
 | Advisor | ✅ | ✅ recommendations for all five tasks from measured data |
 | Router + local API | ✅ | ✅ on-device cascade (1.5B answering, 3B as escalation); the Claude API tier has only been tested with a stand-in client |
+| Demo page | ✅ | ✅ all three tabs exercised with real models |
 | Reports and charts | ✅ | ✅ generated from the measurements below |
 
 Every number in this README was measured on that device with the commands shown. The full generated report is [results/published/REPORT.md](results/published/REPORT.md).
@@ -47,11 +70,13 @@ Then, once a few models are benchmarked:
 uv run edgewise advise --task tool_calling --memory 4GB --min-score 0.8
 uv run edgewise bench -m qwen2.5-3b-instruct@mlx-4bit --all-tasks --decoding prompt_lookup
 uv run edgewise route "Summarise this for me: ..." --remote none
-uv run edgewise serve               # OpenAI-compatible API on http://127.0.0.1:8080
+uv run edgewise serve               # demo page and OpenAI-compatible API on http://127.0.0.1:8080
 uv run edgewise report              # tables + charts in results/published/
 ```
 
 `scripts/bench_all.sh` benchmarks the whole catalog, one model at a time, smallest first.
+
+![edgewise models ls](docs/img/models-ls.svg)
 
 > Benchmarks load multi-gigabyte models. On an 8 GB machine, close other apps first: Edgewise warns when the system is already swapping and tags those results as unreliable.
 
@@ -209,7 +234,7 @@ src/edgewise/
   accelerator/  engine, mlx_model
   advisor/      recommend
   router/       core, rules, evaluate, build
-  server/       app
+  server/       app, demo             (page in server/static/)
   report/       build, svg
 catalog/models.toml   scripts/   docs/
 ```
@@ -225,6 +250,7 @@ Design notes: [technical spec](docs/SPEC.md) · [architecture and flow diagrams]
 - The two 3B 8-bit variants have not been benchmarked on this device.
 - The memory estimate is fitted on one device.
 - MLX is the only local backend. llama.cpp (GGUF) is planned.
+- The demo page has been checked in Safari's engine (WebKit) only, and has no automated browser tests; its server endpoints are unit-tested.
 - The Router's streaming sends the answer after the routing decision, not token by token.
 
 ## License

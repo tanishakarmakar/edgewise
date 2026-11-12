@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Edgewise</title>
+<link rel="icon" href="/ui/icon.svg" type="image/svg+xml">
+<script>
+  // Set the theme before the first paint so the page never flashes the wrong one.
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem("edgewise-theme"); } catch (e) {}
+    var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.dataset.theme = saved || (dark ? "dark" : "light");
+  })();
+</script>
+<link rel="stylesheet" href="/ui/app.css">
+<script src="/ui/app.js" defer></script>
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+
+<header class="top">
+  <div class="top-inner">
+    <a class="brand" href="#router" aria-label="Edgewise">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <rect x="2.5" y="2.5" width="19" height="19" rx="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M7 16.5 12 7.5l5 9" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Edgewise</span>
+      <span class="version" id="version"></span>
+    </a>
+
+    <nav class="tabs" role="tablist" aria-label="Features">
+      <button role="tab" data-view="router">Router</button>
+      <button role="tab" data-view="advisor">Advisor</button>
+      <button role="tab" data-view="accelerator">Accelerator</button>
+    </nav>
+
+    <div class="top-right">
+      <span class="device" id="device" title="This device"></span>
+      <button class="icon-button" id="theme" aria-label="Switch between light and dark theme">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+          <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="banner" id="banner" role="alert" hidden></div>
+
+<main>
+  <!-- ============================================================ Router -->
+  <section class="view" id="view-router" role="tabpanel">
+    <div class="view-head">
+      <h1>Answer on the device. Escalate only when it is needed.</h1>
+      <p>Every request goes to the small model first. Private requests and personal data never leave it. A bigger model is called only when the small one is unsure of its answer.</p>
+    </div>
+
+    <div class="grid router-grid">
+      <div class="card composer">
+        <label class="eyebrow" for="prompt">Request</label>
+        <textarea id="prompt" rows="5" placeholder="Ask something…" spellcheck="false"></textarea>
+        <div class="chips" id="router-samples" aria-label="Example requests"></div>
+        <div class="options">
+          <label class="switch">
+            <input type="checkbox" id="opt-private">
+            <span class="track" aria-hidden="true"></span>
+            <span class="switch-text">Private <small>never leaves this device</small></span>
+          </label>
+          <label class="switch">
+            <input type="checkbox" id="opt-json">
+            <span class="track" aria-hidden="true"></span>
+            <span class="switch-text">Expect JSON <small>escalate if the answer is not valid JSON</small></span>
+          </label>
+        </div>
+        <button class="primary" id="send">Route request <kbd>⌘↵</kbd></button>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <div class="eyebrow">Route</div>
+          <ol class="steps" id="steps">
+            <li class="step" data-step="rules">
+              <span class="dot">1</span>
+              <div><b>Hard rules</b><span class="sub">privacy and offline checks</span></div>
+            </li>
+            <li class="step" data-step="local">
+              <span class="dot">2</span>
+              <div><b>Small model</b><span class="sub" id="local-model">on this device</span></div>
+            </li>
+            <li class="step" data-step="gate">
+              <span class="dot">3</span>
+              <div><b>Confidence check</b><span class="sub" id="gate-rule">keep the answer if it is confident</span></div>
+            </li>
+            <li class="step" data-step="remote">
+              <span class="dot">4</span>
+              <div><b>Bigger model</b><span class="sub" id="remote-model">only when needed</span></div>
+            </li>
+          </ol>
+        </div>
+
+        <div class="card answer">
+          <div class="answer-head">
+            <span class="badge" id="route-badge" data-kind="idle"><i></i><span>Waiting for a request</span></span>
+            <span class="answer-model" id="answer-model"></span>
+          </div>
+          <p class="answer-reason" id="answer-reason" hidden></p>
+          <details class="draft" id="draft" hidden>
+            <summary>The small model's answer, which was not kept</summary>
+            <div class="draft-text" id="draft-text"></div>
+          </details>
+          <div class="answer-text" id="answer-text"><span class="placeholder">The answer will appear here as it is generated.</span></div>
+          <div class="meter" id="meter" hidden>
+            <div class="meter-labels"><span>Confidence <b id="meter-value"></b></span><span id="meter-threshold"></span></div>
+            <div class="meter-track"><div class="meter-fill" id="meter-fill"></div><div class="meter-mark" id="meter-mark"></div></div>
+          </div>
+          <dl class="meta" id="answer-meta" hidden>
+            <div><dt>Time</dt><dd id="meta-time"></dd></div>
+            <div><dt>Tokens</dt><dd id="meta-tokens"></dd></div>
+            <div><dt>Cost</dt><dd id="meta-cost"></dd></div>
+          </dl>
+        </div>
+      </div>
+    </div>
+
+    <div class="tiles" aria-label="This session">
+      <div class="tile"><span class="eyebrow">Requests</span><b id="tile-requests">0</b></div>
+      <div class="tile"><span class="eyebrow">Answered on device</span><b id="tile-local">–</b></div>
+      <div class="tile"><span class="eyebrow">Escalated</span><b id="tile-escalated">0</b></div>
+      <div class="tile"><span class="eyebrow">Kept private</span><b id="tile-private">0</b></div>
+      <div class="tile"><span class="eyebrow">Cost</span><b id="tile-cost">$0</b></div>
+    </div>
+
+    <div class="card history" id="history-card" hidden>
+      <div class="eyebrow">This session <span class="quiet">kept in this tab only; the server does not store prompts</span></div>
+      <ul class="history" id="history"></ul>
+    </div>
+  </section>
+
+  <!-- ============================================================ Advisor -->
+  <section class="view" id="view-advisor" role="tabpanel" hidden>
+    <div class="view-head">
+      <h1>Pick the model from measurements, not from guesses.</h1>
+      <p>Each dot is a model variant benchmarked on this device. The Advisor drops what does not fit in memory or scores too low, then picks from the models that nothing else beats on both speed and quality.</p>
+    </div>
+
+    <div class="card controls">
+      <div class="control control-task">
+        <span class="eyebrow">Task</span>
+        <div class="segmented" id="adv-task" role="radiogroup" aria-label="Task"></div>
+      </div>
+      <div class="control control-memory">
+        <label class="eyebrow" for="adv-mem">Memory budget <output id="adv-mem-out"></output></label>
+        <input type="range" id="adv-mem" min="1" max="8" step="0.5" value="4.5">
+      </div>
+      <div class="control control-floor">
+        <label class="eyebrow" for="adv-floor">Minimum score <output id="adv-floor-out">none</output></label>
+        <input type="range" id="adv-floor" min="0" max="1" step="0.05" value="0">
+      </div>
+      <div class="control control-prefer">
+        <span class="eyebrow">Prefer</span>
+        <div class="segmented" id="adv-prefer" role="radiogroup" aria-label="Preference">
+          <button role="radio" data-value="balanced" aria-checked="true">Balanced</button>
+          <button role="radio" data-value="speed" aria-checked="false">Speed</button>
+          <button role="radio" data-value="quality" aria-checked="false">Quality</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid advisor-grid">
+      <div class="card chart-card">
+        <div class="legend">
+          <span><i class="key key-frontier"></i>Worth considering</span>
+          <span><i class="key key-beaten"></i>Beaten by another model</span>
+          <span><i class="key key-out"></i>Ruled out</span>
+        </div>
+        <div class="chart-wrap">
+          <svg id="adv-chart" viewBox="0 0 760 400" role="img" aria-label="Task score against speed for each benchmarked model"></svg>
+          <div class="tooltip" id="adv-tip" hidden></div>
+        </div>
+      </div>
+      <div class="card pick" id="adv-pick"></div>
+    </div>
+
+    <div class="card table-card">
+      <table class="data" id="adv-table">
+        <thead><tr><th>Model</th><th class="num">Score</th><th class="num">Tokens/s</th><th class="num">First token</th><th class="num">Memory</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================ Accelerator -->
+  <section class="view" id="view-accelerator" role="tabpanel" hidden>
+    <div class="view-head">
+      <h1>Same model, same answer, fewer passes.</h1>
+      <p>Prompt lookup guesses the next few tokens from the prompt itself. The model checks all of them in a single pass and keeps the ones it agrees with, so every token is still its own choice.</p>
+    </div>
+
+    <div class="card composer">
+      <div class="composer-top">
+        <div class="segmented" id="acc-presets" role="radiogroup" aria-label="Example"></div>
+        <span class="quiet" id="acc-model"></span>
+      </div>
+      <textarea id="acc-prompt" rows="7" spellcheck="false" aria-label="Prompt"></textarea>
+      <div class="composer-bottom">
+        <span class="quiet" id="acc-system"></span>
+        <button class="primary" id="acc-run">Run comparison</button>
+      </div>
+    </div>
+
+    <div class="grid lanes">
+      <div class="card lane" data-lane="standard">
+        <div class="lane-head">
+          <div><b>Standard decoding</b><span class="sub">one token per pass</span></div>
+          <div class="lane-speed"><b class="speed">–</b><span>tokens/s</span></div>
+        </div>
+        <div class="lane-status">Not run yet</div>
+        <div class="output" aria-live="off"></div>
+      </div>
+      <div class="card lane" data-lane="prompt_lookup">
+        <div class="lane-head">
+          <div><b>Prompt lookup</b><span class="sub">several tokens per pass when guesses land</span></div>
+          <div class="lane-speed"><b class="speed">–</b><span>tokens/s</span></div>
+        </div>
+        <div class="lane-status">Not run yet</div>
+        <div class="output" aria-live="off"></div>
+      </div>
+    </div>
+
+    <div class="card result" id="acc-result" hidden>
+      <div class="result-main">
+        <b id="acc-speedup"></b>
+        <span id="acc-speedup-label"></span>
+      </div>
+      <div class="result-facts" id="acc-facts"></div>
+      <button class="secondary" id="acc-replay">Replay side by side</button>
+    </div>
+    <p class="footnote">The two runs are measured one after the other, because a small device runs one model at a time. The replay plays both back together at their measured pace. <span class="guess">Highlighted text</span> was guessed and accepted without a pass of its own.</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Everything on this page runs on this device.</span>
+  <span>OpenAI-compatible API at <code>/v1/chat/completions</code></span>
+</footer>
+</body>
+</html>
