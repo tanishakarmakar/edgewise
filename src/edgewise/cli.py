@@ -414,7 +414,7 @@ def serve(
     config_path: Path = typer.Option(None, "--config", help="Path to edgewise.toml."),
     db: Path = typer.Option(Path("results/edgewise.duckdb"), help="Results database."),
 ) -> None:
-    """Start a local OpenAI-compatible API backed by the router."""
+    """Start the demo page and a local OpenAI-compatible API, both backed by the router."""
     try:
         import uvicorn
 
@@ -437,9 +437,10 @@ def serve(
         f"local [bold]{config.router.local_model}[/bold] · escalation "
         f"[bold]{config.router.remote_model}[/bold] · policy {config.router.policy}"
     )
-    console.print(f"POST http://{host}:{port}/v1/chat/completions")
+    console.print(f"demo page  http://{host}:{port}/")
+    console.print(f"API        POST http://{host}:{port}/v1/chat/completions")
     # The store and the models are created on the server's worker thread (see create_app).
-    app_ = create_app(lambda: build_router(config, catalog, Store(db)))
+    app_ = create_app(lambda: build_router(config, catalog, Store(db)), catalog)
     uvicorn.run(app_, host=host, port=port, log_level="warning")
 
 

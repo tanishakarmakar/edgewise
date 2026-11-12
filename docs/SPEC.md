@@ -565,6 +565,7 @@ Sections 1 to 16 are the original design. These are the places the implementatio
 | Advisor `balanced` preference (§7) | Maximize quality × normalized speed | Fastest model within 0.05, or one eval item, of the best score | On real data the product rule recommended a 0.65-score model for tool calling because it was fast. |
 | Allocator cache (§8) | Not considered | The accelerated loop releases MLX's buffer cache after every request and every 64 passes | Passes of varying width left ~130 MB per request in the cache, never released; a benchmark grew by gigabytes and the system swapped. |
 | Prefill in the accelerated loop (§8) | One pass over the prompt | Prompt minus its last token goes through for cache entries only; the last token runs alone | The single pass evaluated the output layer for every prompt position and discarded all but one. |
+| Demo (§4) | Terminal output and README charts | Also a local web page served by `edgewise serve`, one tab per feature, with live token streaming for the Router (`/api/route`) and a side-by-side decoding comparison (`/api/compare`) | A reviewer understands the cascade and the speed-up faster by watching them than by reading tables. It loads nothing from the network, in keeping with an on-device tool. |
 
 ### Lessons recorded during the build
 

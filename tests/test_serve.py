@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from conftest import record_run
 from typer.testing import CliRunner
 
 from edgewise.backends.fake import FakeBackend
@@ -222,3 +223,114 @@ def test_cli_route(tmp_path, monkeypatch):
 
     bad = runner.invoke(cli, [*args, "--policy", "sometimes"])
     assert bad.exit_code == 1
+
+
+# ------------------------------------------------------------------ demo page
+
+
+def sse(response):
+    return [json.loads(x.removeprefix("data: ")) for x in response.text.split("\n\n") if x]
+
+
+@pytest.fixture
+def demo_client(store):
+    record_run(store, SMALL, scores=[1] * 19 + [0], tps=120, peak_mb=400)
+    record_run(store, BIG, scores=[1] * 20, tps=24, peak_mb=2100)
+    router = Router(
+        fake_tier("the local answer", logprob=-0.2),
+        fake_tier("the remote answer", model_id=BIG),
+        min_logprob=-0.8,
+        store=store,
+    )
+    return TestClient(create_app(router)), router
+
+
+def test_demo_page_and_assets_are_served(demo_client):
+    http, _ = demo_client
+    page = http.get("/")
+    assert page.status_code == 200 and "Edgewise" in page.text
+    for asset in ("app.css", "app.js"):
+        assert http.get(f"/ui/{asset}").status_code == 200
+        assert f"/ui/{asset}" in page.text
+
+
+def test_demo_page_loads_nothing_from_the_network(demo_client):
+    # An on-device tool's own page must work offline: no CDN fonts, scripts or styles.
+    http, _ = demo_client
+    for path in ("/", "/ui/app.css", "/ui/app.js"):
+        text = http.get(path).text
+        assert "https://" not in text and "http://" not in text.replace("http://www.w3.org", "")
+
+
+def test_overview_describes_device_router_and_tasks(demo_client):
+    http, _ = demo_client
+    data = http.get("/api/overview").json()
+    assert data["router"]["local"] == {"id": SMALL, "label": "qwen2.5-0.5b 4bit", "on_device": True}
+    assert data["router"]["remote"]["id"] == BIG and data["router"]["min_logprob"] == -0.8
+    assert [t["id"] for t in data["tasks"]][0] == "tool_calling"
+    assert data["benchmarked"] == 2 and data["device"]["ram_gb"] > 0
+
+
+def test_advise_endpoint_returns_rows_with_labels(demo_client):
+    http, _ = demo_client
+    data = http.get("/api/advise", params={"task": "tool_calling", "memory_gb": 4.5}).json()
+    assert data["choice"]["model_id"] == SMALL and data["choice"]["label"] == "qwen2.5-0.5b 4bit"
+    assert all("label" in row for row in data["rows"])
+    # A tighter budget rules the 3B model out.
+    tight = http.get("/api/advise", params={"task": "tool_calling", "memory_gb": 1.0}).json()
+    assert {r["model_id"]: r["status"] for r in tight["rows"]}[BIG] == "too big"
+
+
+def test_advise_endpoint_rejects_unknown_task_and_missing_store(demo_client, client):
+    http, _ = demo_client
+    assert http.get("/api/advise", params={"task": "nope", "memory_gb": 4}).status_code == 404
+    no_store, _ = client
+    response = no_store.get("/api/advise", params={"task": "tool_calling", "memory_gb": 4})
+    assert response.status_code == 503
+
+
+def test_live_route_streams_tokens_then_the_decision(demo_client):
+    http, router = demo_client
+    body = {"messages": [{"role": "user", "content": "Capital of France?"}]}
+    events = sse(http.post("/api/route", json=body))
+    tokens = [e for e in events if e["type"] == "token"]
+    assert "".join(e["text"] for e in tokens) == "the local answer"
+    assert {e["route"] for e in tokens} == {"local"}
+    decision = events[-1]
+    assert decision["type"] == "decision" and decision["route"] == "local"
+    assert decision["text"] == "the local answer" and decision["stats"]["requests"] == 1
+
+    # When the local answer is not trusted, the page sees it first and then the escalation.
+    router.min_logprob = 0.0
+    events = sse(http.post("/api/route", json=body))
+    routes = [e["route"] for e in events if e["type"] == "token"]
+    assert routes == ["local"] * 3 + ["remote"] * 3
+    assert events[-1]["escalated"] is True and events[-1]["text"] == "the remote answer"
+
+
+def test_compare_runs_both_decodings_and_reports_identity(demo_client):
+    http, router = demo_client
+    body = {"messages": [{"role": "user", "content": "Fix the typo"}], "max_tokens": 50}
+    events = sse(http.post("/api/compare", json=body))
+    lanes = [e["lane"] for e in events if e["type"] == "start"]
+    assert lanes == ["standard", "prompt_lookup"]
+    done = {e["lane"]: e for e in events if e["type"] == "done"}
+    assert done["standard"]["tokens"] == 3 and done["standard"]["decode_tps"] == 100.0
+    assert router.local.backend.last_settings.decoding == "prompt_lookup"
+    # One warm-up generation the first time, then one per lane; no warm-up the second time.
+    assert router.local.backend.generations == 3
+    http.post("/api/compare", json=body)
+    assert router.local.backend.generations == 5
+    result = events[-1]
+    assert result == {"type": "result", "identical": True, "speedup": 1.0}
+
+
+def test_compare_reports_a_failing_backend_as_an_event(demo_client):
+    http, router = demo_client
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("model fell over")
+
+    router.local.backend.generate = broken
+    events = sse(http.post("/api/compare", json={"messages": [{"role": "user", "content": "x"}]}))
+    assert events == [{"type": "error", "message": "model fell over"}]

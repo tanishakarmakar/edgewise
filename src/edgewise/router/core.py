@@ -28,6 +28,8 @@ from edgewise.store import Store
 
 Policy = Literal["cascade", "local-only", "remote-only"]
 Route = Literal["local", "remote"]
+# Called with (which tier is generating, the new token's text) while an answer is produced.
+TokenListener = Callable[[Route, str], None]
 
 
 class EscalationFailed(RuntimeError):
@@ -48,6 +50,12 @@ class Tier:
     @property
     def model_id(self) -> str:
         return self.model.variant.id
+
+
+def _tap(events, route: Route, on_token: TokenListener):
+    for event in events:
+        on_token(route, event.text)
+        yield event
 
 
 class RouteRequest(BaseModel):
@@ -106,22 +114,27 @@ class Router:
 
     # ------------------------------------------------------------------ decision
 
-    def route(self, request: RouteRequest) -> RouteDecision:
+    def route(self, request: RouteRequest, on_token: TokenListener | None = None) -> RouteDecision:
+        """`on_token` lets a caller watch the answer being generated. In a cascade it sees the
+        local answer first and then, if that one is not kept, the escalated answer."""
         pii = detect_pii(" ".join(m.content for m in request.messages))
         stay_local = self._must_stay_local(request, pii)
 
+        def local(reason: str) -> RouteDecision:
+            return self._answer(self.local, request, "local", reason, on_token)
+
         if stay_local:
-            decision = self._answer(self.local, request, "local", stay_local)
+            decision = local(stay_local)
         elif request.force == "local":
-            decision = self._answer(self.local, request, "local", "forced local by the caller")
+            decision = local("forced local by the caller")
         elif request.force == "remote":
-            decision = self._remote_or_local(request, "forced remote by the caller")
+            decision = self._remote_or_local(request, "forced remote by the caller", on_token)
         elif self.policy == "local-only":
-            decision = self._answer(self.local, request, "local", "policy: local-only")
+            decision = local("policy: local-only")
         elif self.policy == "remote-only":
-            decision = self._remote_or_local(request, "policy: remote-only")
+            decision = self._remote_or_local(request, "policy: remote-only", on_token)
         else:
-            decision = self._cascade(request)
+            decision = self._cascade(request, on_token)
 
         decision.pii = pii
         self._record(decision, request, kept_private=bool(request.private or pii))
@@ -138,15 +151,15 @@ class Router:
             return "offline: answered on device"
         return None
 
-    def _cascade(self, request: RouteRequest) -> RouteDecision:
-        local = self._answer(self.local, request, "local", "")
+    def _cascade(self, request: RouteRequest, on_token: TokenListener | None) -> RouteDecision:
+        local = self._answer(self.local, request, "local", "", on_token)
         doubt = self._doubt(local, request)
         if doubt is None:
             confidence = "" if local.confidence is None else f" (confidence {local.confidence:.2f})"
             local.reason = f"local answer accepted{confidence}"
             return local
         try:
-            remote = self._answer(self.remote, request, "remote", f"escalated: {doubt}")
+            remote = self._answer(self.remote, request, "remote", f"escalated: {doubt}", on_token)
         except EscalationFailed as e:
             local.reason = f"{doubt}, but escalation failed ({e}): returning the local answer"
             return local
@@ -155,13 +168,14 @@ class Router:
         remote.latency_ms += local.latency_ms  # the user waited for both
         return remote
 
-    def _remote_or_local(self, request: RouteRequest, reason: str) -> RouteDecision:
+    def _remote_or_local(
+        self, request: RouteRequest, reason: str, on_token: TokenListener | None
+    ) -> RouteDecision:
         try:
-            return self._answer(self.remote, request, "remote", reason)
+            return self._answer(self.remote, request, "remote", reason, on_token)
         except EscalationFailed as e:
-            return self._answer(
-                self.local, request, "local", f"escalation failed ({e}): answered on device"
-            )
+            reason = f"escalation failed ({e}): answered on device"
+            return self._answer(self.local, request, "local", reason, on_token)
 
     def _doubt(self, local: RouteDecision, request: RouteRequest) -> str | None:
         """Why the local answer should not be trusted, or None if it looks fine."""
@@ -176,12 +190,19 @@ class Router:
     # ------------------------------------------------------------------ generation
 
     def _answer(
-        self, tier: Tier, request: RouteRequest, route: Route, reason: str
+        self,
+        tier: Tier,
+        request: RouteRequest,
+        route: Route,
+        reason: str,
+        on_token: TokenListener | None = None,
     ) -> RouteDecision:
         settings = GenerationSettings(max_tokens=request.max_tokens, **tier.settings)
         start = tier.backend.now_ns()
         try:
             stream = tier.backend.generate(tier.model, request.messages, settings)
+            if on_token is not None:
+                stream.events = _tap(stream.events, route, on_token)
             result: GenerationResult = collect(stream, start)
         except Exception as e:
             if route == "remote":
