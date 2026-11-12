@@ -125,8 +125,8 @@
     <div class="layer" style="--lc: var(--c-iface)">
       <div class="layer-label">Interfaces</div>
       <div class="layer-boxes">
-        <div class="box"><b>CLI</b><span>info · models · bench · advise · route · serve · report</span></div>
-        <div class="box"><b>Local API</b><span>OpenAI-compatible <code>/v1/chat/completions</code>, localhost only</span></div>
+        <div class="box done"><b>CLI</b><span>info · models · bench · advise · route · serve · report</span></div>
+        <div class="box done"><b>Local API</b><span>OpenAI-compatible <code>/v1/chat/completions</code>, localhost only</span></div>
       </div>
     </div>
     <div class="down">▼ uses</div>
@@ -134,9 +134,9 @@
     <div class="layer" style="--lc: var(--c-feat)">
       <div class="layer-label">Features</div>
       <div class="layer-boxes">
-        <div class="box"><b>Advisor</b><span>Which variant fits this device and task best?</span></div>
-        <div class="box"><b>Accelerator</b><span>Speculative, prompt-lookup and adaptive decoding</span></div>
-        <div class="box"><b>Router</b><span>Local or cloud? Rules, classifier, cascade, cost</span></div>
+        <div class="box done"><b>Advisor</b><span>Which variant fits this device and task best?</span></div>
+        <div class="box done"><b>Accelerator</b><span>Speculative and prompt-lookup decoding, cost-aware guess length</span></div>
+        <div class="box done"><b>Router</b><span>Local or escalate? Privacy rules, cascade, cost</span></div>
       </div>
     </div>
     <div class="down">▼ uses</div>
@@ -145,11 +145,11 @@
       <div class="layer-label">Foundation</div>
       <div class="layer-boxes">
         <div class="box done"><b>Hardware profiler</b><span>RAM, chip, disk, memory budget</span></div>
-        <div class="box"><b>Model catalog</b><span>Variants, quantization, architecture numbers</span></div>
-        <div class="box"><b>Eval suite</b><span>Task datasets + scorers</span></div>
-        <div class="box"><b>Bench runner</b><span>TTFT, tokens/s, memory, quality</span></div>
-        <div class="box"><b>Results store</b><span>DuckDB: runs, perf, quality, route log</span></div>
-        <div class="box"><b>Config</b><span><code>edgewise.toml</code>: paths, prices, policy</span></div>
+        <div class="box done"><b>Model catalog</b><span>Variants, quantization, architecture numbers</span></div>
+        <div class="box done"><b>Eval suite</b><span>Task datasets + scorers</span></div>
+        <div class="box done"><b>Bench runner</b><span>TTFT, tokens/s, memory, quality</span></div>
+        <div class="box done"><b>Results store</b><span>DuckDB: runs, perf, quality, route log</span></div>
+        <div class="box done"><b>Config</b><span><code>edgewise.toml</code>: paths, prices, policy</span></div>
       </div>
     </div>
     <div class="down">▼ uses</div>
@@ -157,10 +157,10 @@
     <div class="layer" style="--lc: var(--c-back)">
       <div class="layer-label">Backends</div>
       <div class="layer-boxes">
-        <div class="box"><b>MLX</b><span>In-process, Apple Silicon, full decode control</span></div>
-        <div class="box"><b>llama.cpp</b><span>Prebuilt <code>llama-server</code> over HTTP (GGUF)</span></div>
-        <div class="box"><b>Cloud</b><span>Anthropic API: router fallback + LLM judge</span></div>
-        <div class="box"><b>Fake</b><span>Scripted tokens for unit tests</span></div>
+        <div class="box done"><b>MLX</b><span>In-process, Apple Silicon, full decode control</span></div>
+        <div class="box"><b>llama.cpp</b><span>Planned: prebuilt <code>llama-server</code> over HTTP (GGUF)</span></div>
+        <div class="box done"><b>Cloud</b><span>Claude API: the router's escalation tier</span></div>
+        <div class="box done"><b>Fake</b><span>Scripted tokens for unit tests</span></div>
       </div>
     </div>
 
@@ -169,7 +169,7 @@
       <span style="--lc: var(--c-feat)"><i></i>Features</span>
       <span style="--lc: var(--c-found)"><i></i>Foundation</span>
       <span style="--lc: var(--c-back)"><i></i>Backends</span>
-      <span>“built” = exists today</span>
+      <span>“built” = implemented and unit-tested</span>
     </div>
   </section>
 
@@ -177,7 +177,7 @@
   <section role="tabpanel" id="bench">
     <p class="lead"><code>edgewise bench --model &lt;id&gt; --task &lt;id&gt;</code>: measures how fast a model runs on this device and how well it does real tasks. Every other feature reads from what this writes.</p>
     <div class="flow">
-      <div class="step"><div class="num">1</div><div><h3>Write run manifest</h3><p>Hardware, git commit, library versions, AC-power status, so any number can be traced back and reproduced.</p><span class="tag">hardware profiler</span><span class="tag">warns if on battery</span></div></div>
+      <div class="step"><div class="num">1</div><div><h3>Write run manifest</h3><p>Hardware, git commit, library versions, power source and swap usage, so any number can be traced back and reproduced.</p><span class="tag">hardware profiler</span><span class="tag">warns on battery or when swapping</span></div></div>
       <div class="arrow"></div>
       <div class="step"><div class="num">2</div><div><h3>Check memory, then load model</h3><p>Estimate weights + KV cache + overhead. Refuse if it exceeds the budget; record load time and memory after load.</p><span class="tag">catalog</span><span class="tag">backend.load()</span></div></div>
       <div class="arrow"></div>
@@ -187,7 +187,7 @@
         <div class="step"><div class="num">4</div><div><h3>Performance pass</h3><p>Stream tokens and timestamp each one. Compute TTFT, prefill tokens/s, decode tokens/s, inter-token latency P50/P95, peak memory.</p><span class="tag">same timing code for every backend</span></div></div>
       </div>
       <div class="arrow"></div>
-      <div class="step"><div class="num">5</div><div><h3>Quality pass</h3><p>Run every eval item once with greedy decoding and score it: tool-call match, JSON field F1, QA F1, math exact match, or LLM judge for open chat.</p><span class="tag">eval suite</span><span class="tag">scorers</span></div></div>
+      <div class="step"><div class="num">5</div><div><h3>Quality pass</h3><p>Run every eval item once with greedy decoding and score it: tool-call match, JSON field F1, QA answer match, math exact match, edited-text match.</p><span class="tag">eval suite</span><span class="tag">scorers</span></div></div>
       <div class="arrow"></div>
       <div class="step"><div class="num">6</div><div><h3>Unload + cool down</h3><p>Free memory and wait 10 s to reduce thermal effects on the next model.</p></div></div>
       <div class="arrow"></div>
@@ -197,15 +197,15 @@
 
   <!-- ADVISE -->
   <section role="tabpanel" id="advise">
-    <p class="lead"><code>edgewise advise --task tool_calling --min-quality 0.9</code>: picks the best model variant for this device and task, and explains why. It only ranks variants that have actually been measured.</p>
+    <p class="lead"><code>edgewise advise --task tool_calling --min-score 0.8</code>: picks the best model variant for this device and task, and explains why. It only ranks variants that have actually been measured.</p>
     <div class="flow">
       <div class="step"><div class="num">1</div><div><h3>All catalog variants</h3><p>e.g. Qwen 2.5 and Llama 3.2 at 0.5B–3B, in MLX 4/8-bit and GGUF Q4/Q5/Q8.</p></div></div>
       <div class="arrow"></div>
-      <div class="step"><div class="num">2</div><div><h3>Feasibility filter</h3><p>Drop anything whose estimated memory exceeds the budget (device default or <code>--memory</code>). Mark near-limit ones “tight”.</p><span class="tag">memory model</span></div></div>
+      <div class="step"><div class="num">2</div><div><h3>Feasibility filter</h3><p>Drop anything that exceeds the budget (device default or <code>--memory</code>), using the measured peak when there is one and the estimate otherwise.</p><span class="tag">memory model</span></div></div>
       <div class="arrow"></div>
       <div class="step"><div class="num">3</div><div><h3>Look up evidence</h3><p>Measured quality and speed from the results store. Unmeasured variants are listed with the command to benchmark them, never ranked on guesses.</p><span class="tag">results store</span></div></div>
       <div class="arrow"></div>
-      <div class="step"><div class="num">4</div><div><h3>Quality floor</h3><p>Drop variants below <code>--min-quality</code> (score relative to the highest-precision version of the same model).</p></div></div>
+      <div class="step"><div class="num">4</div><div><h3>Quality floor</h3><p>Drop variants below <code>--min-score</code> on this task. The score relative to the higher-precision version of the same model is shown alongside.</p></div></div>
       <div class="arrow"></div>
       <div class="step"><div class="num">5</div><div><h3>Pareto frontier</h3><p>Keep only variants that no other variant beats on both quality and speed.</p></div></div>
       <div class="arrow"></div>
@@ -229,7 +229,7 @@
       </div>
       <div class="arrow"></div>
       <div class="loop"><span class="loop-label">loop until max tokens or end of text</span>
-        <div class="step"><div class="num">1</div><div><h3>Propose <em>k</em> draft tokens</h3><p><em>k</em> comes from the adaptive controller (1–8).</p></div></div>
+        <div class="step"><div class="num">1</div><div><h3>Propose <em>k</em> draft tokens</h3><p><em>k</em> comes from the guess-length policy (0–8 for a draft model, up to 16 for prompt lookup).</p></div></div>
         <div class="arrow"></div>
         <div class="step"><div class="num">2</div><div><h3>Verify in one pass</h3><p>Target model scores context + all <em>k</em> drafts at once.</p></div></div>
         <div class="arrow"></div>
@@ -237,7 +237,7 @@
         <div class="arrow"></div>
         <div class="step"><div class="num">4</div><div><h3>Roll back KV caches</h3><p>Trim draft/target caches to the accepted length.</p></div></div>
         <div class="arrow"></div>
-        <div class="step"><div class="num">5</div><div><h3>Adapt <em>k</em></h3><p>High recent acceptance → raise <em>k</em>. Low → lower it. Near zero → fall back to standard decoding for a while.</p></div></div>
+        <div class="step"><div class="num">5</div><div><h3>Choose the next <em>k</em> by cost</h3><p>Update the estimated chance that a guess is right, then pick the <em>k</em> with the most expected tokens per millisecond, given the measured cost of verifying <em>k</em> tokens. That can be 0: don't guess.</p></div></div>
       </div>
       <div class="arrow"></div>
       <div class="step out"><div class="num">✓</div><div><h3>Measured per task</h3><p>Speedup vs. standard decoding, acceptance rate, tokens accepted per step, extra memory, plus a token-for-token test that output is unchanged.</p></div></div>
@@ -250,26 +250,26 @@
     <div class="flow">
       <div class="step"><div class="num">1</div><div><h3>Request arrives</h3><p>Messages plus optional tools, JSON schema, or <code>private: true</code>.</p></div></div>
       <div class="arrow"></div>
-      <div class="step"><div class="num">2</div><div><h3>Hard rules (checked first, can't be overridden)</h3><p>Private flag or detected PII → <strong>local only</strong>. Offline → <strong>local only</strong>. Caller forces cloud → cloud.</p><span class="tag">PII detector</span><span class="tag">connectivity check</span></div></div>
+      <div class="step"><div class="num">2</div><div><h3>Hard rules (checked first, can't be overridden)</h3><p>Private flag or detected personal data → <strong>local only</strong>. Offline or no escalation model → <strong>local only</strong>.</p><span class="tag">PII detector</span><span class="tag">connectivity check</span></div></div>
       <div class="arrow"></div>
       <div class="step"><div class="num">3</div><div><h3>Routing policy</h3><p>Chosen in <code>edgewise.toml</code>.</p></div></div>
       <div class="arrow"></div>
       <div class="branch">
-        <div class="step" style="--bc: var(--c-found)"><div><h3>Classifier</h3><p>Before generating: predict “will the local model succeed?” from prompt embedding + features. Yes → local, no → cloud.</p></div></div>
-        <div class="step" style="--bc: var(--c-feat)"><div><h3>Cascade</h3><p>Generate locally first. Low mean log-prob or invalid JSON/tool call → escalate to cloud.</p></div></div>
-        <div class="step" style="--bc: var(--muted)"><div><h3>Baselines</h3><p>Local-only and cloud-only, for comparison.</p></div></div>
+        <div class="step" style="--bc: var(--c-found)"><div><h3>Forced by the caller</h3><p><code>force: local</code> or <code>force: remote</code> skips the cascade (never the hard rules).</p></div></div>
+        <div class="step" style="--bc: var(--c-feat)"><div><h3>Cascade</h3><p>Generate locally first. Empty answer, invalid JSON, or low mean log-probability → escalate. If escalation fails, keep the local answer.</p></div></div>
+        <div class="step" style="--bc: var(--muted)"><div><h3>Baselines</h3><p>Local-only and remote-only policies, for comparison.</p></div></div>
       </div>
       <div class="arrow"></div>
       <div class="branch">
         <div class="step" style="--bc: var(--ok)"><div><h3>Local model</h3><p>Fast, private, free. Can use the Accelerator.</p></div></div>
-        <div class="step" style="--bc: var(--warn)"><div><h3>Cloud model</h3><p>Higher quality; tokens × configured prices → cost. Stops at the spend limit.</p></div></div>
+        <div class="step" style="--bc: var(--warn)"><div><h3>Escalation model</h3><p>The Claude API or a larger on-device model. Tokens × configured prices → cost.</p></div></div>
       </div>
       <div class="arrow"></div>
       <div class="step out"><div class="num">✓</div><div><h3>Response + route log</h3><p>Answer plus <code>{route, reason, model_id, cost_usd}</code>. Logs feed the cost-vs-quality curve and the % handled locally.</p></div></div>
     </div>
   </section>
 
-  <footer>Edgewise · design draft v0.1 · MIT licensed</footer>
+  <footer>Edgewise · design v0.2 · MIT licensed</footer>
 </div>
 
 <script>

@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | Draft v0.1 (pre-implementation) |
+| **Status** | v0.2: implemented; see §17 for where the build differs from this design |
 | **Author** | Tanisha Karmakar |
-| **Last updated** | 2026-11-10 |
+| **Last updated** | 2026-11-12 |
 | **Flow diagrams** | [`architecture.html`](architecture.html) (open in a browser) |
 
 ---
@@ -500,6 +500,8 @@ edgewise/
 | 4 | Router | Rules + classifier + cascade; `route` and `serve` work; cost-vs-quality curve; offline demo |
 | 5 | Write-up | README with GIFs, published results, blog post with findings and limitations |
 
+**Status on 2026-11-12.** The code for milestones 1 to 4 and the report generator exists and is unit-tested (fake backends, no models needed). Still open: benchmarking the whole catalog (1 of 10 variants done), calibrating the memory model, exercising the Router and local API on real models, the llama.cpp backend, the routing classifier, larger eval sets, and the write-up.
+
 ---
 
 ## 15. Risks and open questions
@@ -533,3 +535,36 @@ edgewise/
 | **Speculative decoding** | A fast draft proposes tokens; the main model verifies several at once |
 | **Pareto frontier** | The set of options where you can't improve one metric without worsening another |
 | **Cascade** | Try the cheap model first; escalate to the expensive one only when unsure |
+
+---
+
+## 17. Implementation notes: where the build differs from this design
+
+Sections 1 to 16 are the original design. These are the places the implementation departed from it, and why.
+
+| Area | Design | Built | Why |
+|---|---|---|---|
+| Decoding modes (§5, §8) | `decoding` = standard / speculative / prompt_lookup / adaptive | `decoding` = standard / speculative / prompt_lookup, plus a separate `k_policy` = fixed / heuristic / cost_aware | "Adaptive" is a property of how many tokens to guess, not a fourth way of guessing; it applies to both proposers. |
+| Guess-length policy (§8.3) | Raise or lower `k` from the recent acceptance rate | **Cost-aware**: measure the cost of a forward pass over 1 to 17 tokens per model, estimate the per-token acceptance probability online, and choose the `k` with the best expected tokens per millisecond (possibly 0). The +2/−1 heuristic is kept as a baseline. | Measured on the reference device, a pass over 9 tokens costs about 3× a pass over 1. A rule that ignores this cost makes decoding slower whenever acceptance is moderate. |
+| Speed of accelerated decoding (§6.5, §8.4) | Compare on the raw speed pass | Compare on the eval task prompts; the raw speed pass is skipped for accelerated modes | The raw pass uses repeated filler text, which prompt lookup can copy almost entirely. That would overstate its benefit. |
+| Memory pinning (§8) | Not considered | The accelerated loop pins model memory, as mlx-lm's own loop does | Without it, macOS pages weights out under memory pressure and single passes stall for seconds. |
+| Eval tasks (§6.4) | 6 tasks incl. `chat` (LLM judge) and `long_context` | 5 tasks: the first four plus `text_edit`; no `chat` or `long_context` yet | `text_edit` is prompt lookup's natural workload and needs no judge. The judged task was deferred to keep every score automatic and free. |
+| QA scoring (§6.4) | Token F1 | Full credit if the answer contains an acceptable answer, else token F1 | Plain F1 marked correct full-sentence answers down for their extra words. |
+| Advisor quality floor (§7) | `--min-quality` on score relative to the best-precision variant | `--min-score` on the absolute task score; the relative score is shown as a column | An absolute floor is what a user actually needs ("at least 0.8 on tool calling"); the relative number still shows what quantization cost. |
+| Advisor memory check (§7) | Estimate only | Measured peak when the variant has been benchmarked, estimate otherwise | The estimate is known to be low for long prompts (§6.3). |
+| Router escalation tier (§9) | Cloud model | Any backend: the Claude API **or** a larger on-device model | Lets the cascade be built, tested and demonstrated fully offline, and makes "small model first, bigger model if unsure" a single mechanism. |
+| Router policies (§9.1) | local-only, cloud-only, classifier, cascade | local-only, remote-only, cascade. **No classifier yet.** | A classifier trained on 84 eval items would be noise. It needs larger eval sets first. |
+| Cascade evaluation (§9.5) | Run each policy live on held-out items | Replay the cascade at every threshold from stored benchmark results (`evaluate_cascade`) | Costs nothing to run and makes the threshold a measured choice. With at least 10 items per half, the threshold is chosen on one half and reported on the other; with fewer, the report says the figure is an upper bound. |
+| Router failure handling (§9) | Not specified | If escalation fails (network, credentials, rate limit, refusal), return the local answer with the reason | An answer the user can judge is better than an error. |
+| Streaming API (§10.2) | Token streaming via SSE | SSE in the OpenAI format, sent after the routing decision | The cascade must see the whole local answer before deciding whether to keep it. |
+| API thread model (§10.2) | Not specified | Models are loaded and run on one worker thread | MLX state belongs to the thread that created it; one generation at a time is also all an 8 GB device can do. |
+| Results schema (§6.6) | As listed | Adds decoding configuration, per-item timings, mean log-probability, draft acceptance, power source and swap usage; the route log stores no prompt or answer text | Needed for per-task speed-ups, the cascade replay, and for flagging results measured on battery or under memory pressure. |
+| llama.cpp backend (§6.1) | Milestone 1 | Not built | `llama-cpp-python` ships as source only (a long compile); the plan is to drive the prebuilt `llama-server` over HTTP. MLX covers the reference device. |
+| Charts (§4, §7) | Plotly | Hand-written SVG | No plotting dependency, renders in a GitHub README, follows light/dark mode. |
+| Run hygiene (§6.5) | Warn on battery | Also warn, and tag the run, when the system is already using more than 1 GB of swap | Results measured while the machine swaps are not comparable; found the hard way on the 8 GB reference device. |
+
+### Lessons recorded during the build
+
+- **Verification is not free on this hardware.** The usual assumption behind speculative decoding (checking `k` tokens costs about the same as generating one) does not hold on the A18 Pro: cost grows to roughly 1.8× at 5 tokens and 3× at 9. The best guess length is therefore small unless guesses are almost always right.
+- **The memory model needs a prefill term.** Weights + KV cache underestimates peak memory for long prompts (0.63 GB estimated vs. 1.1 GB measured at 4K tokens on the 0.5B model).
+- **A project under an iCloud-synced folder breaks editable installs.** iCloud marks files inside dot-folders as hidden, and Python 3.12 skips hidden `.pth` files, so the package intermittently became unimportable. The virtual environment now lives outside the synced folder.

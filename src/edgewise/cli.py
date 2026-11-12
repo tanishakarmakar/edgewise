@@ -68,10 +68,12 @@ def models_ls(
     """List catalog models, estimated memory, and whether each fits on this device."""
     budget = detect().model_budget_gb
     downloaded = _downloaded_sizes()
-    table = Table(title=f"Models (memory at {context} tokens, budget ~{budget} GB)")
+    table = Table(title=f"Models (estimated memory at {context} tokens, budget ~{budget} GB)")
     table.add_column("Model", no_wrap=True)  # ids get copy-pasted into other commands
-    for col in ("Params", "Quant", "Backend", "Est. memory", "Fit", "Downloaded"):
-        table.add_column(col)
+    # Quantization and backend are part of the id, so they get no columns of their own:
+    # the table has to fit an 80-column terminal without cutting ids short.
+    for col in ("Params", "Memory", "Fit", "On disk"):
+        table.add_column(col, no_wrap=True)
     for v in Catalog.load():
         est = estimate_memory(v, context_tokens=context)
         fit = est.fit(budget)
@@ -79,8 +81,6 @@ def models_ls(
         table.add_row(
             v.id,
             f"{v.params_b:g}B",
-            v.quant,
-            v.backend,
             f"{est.total_gb:.2f} GB",
             f"[{FIT_STYLE[fit]}]{fit}[/]",
             f"{size:.2f} GB" if size is not None else "—",

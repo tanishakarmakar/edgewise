@@ -230,3 +230,53 @@ def test_cascade_evaluation_no_threshold_reaches_target(store):
     # Both items share one confidence, so the cascade is all-or-nothing.
     assert [p.score for p in ev.points] == [0.0, 1.0]
     assert ev.recommended.local_share == 0.0
+
+
+# ------------------------------------------------------------------ held-out evaluation
+
+
+def big_benchmark(store, n=40):
+    """n items: the local model is right exactly when its confidence is above -0.5."""
+    logprobs = [-0.1 - (i % 10) * 0.1 for i in range(n)]  # -0.1 .. -1.0
+    record_run(store, SMALL, scores=[1 if lp > -0.5 else 0 for lp in logprobs], logprobs=logprobs)
+    record_run(store, BIG, scores=[1] * n)
+
+
+def test_threshold_is_chosen_on_one_half_and_reported_on_the_other(store):
+    big_benchmark(store)
+    ev = evaluate_cascade(store, SMALL, BIG, target=1.0)
+    held = ev.heldout
+    assert held is not None and 10 <= held.n_items <= 30
+    assert held.n_items < ev.n_items
+    # The confidence signal is clean here, so the threshold found on one half holds on the other.
+    assert -0.5 < ev.recommended.threshold < -0.4
+    assert held.point.score == 1.0 and held.point.threshold == ev.recommended.threshold
+    assert held.local_only_score < 1.0 and held.strong_only_score == 1.0
+
+
+def test_split_is_stable_across_runs(store):
+    big_benchmark(store)
+    first = evaluate_cascade(store, SMALL, BIG).heldout
+    assert first == evaluate_cascade(store, SMALL, BIG).heldout
+
+
+def test_too_few_items_means_no_held_out_estimate(benchmarked):
+    ev = evaluate_cascade(benchmarked, SMALL, BIG)
+    assert ev.heldout is None and ev.recommended is not None
+
+
+def test_held_out_score_can_be_lower_than_the_fitted_one(store):
+    # Confidence carries no information about correctness: whatever looks good on the fitting
+    # half is luck, and the held-out half shows it.
+    import random
+
+    rng = random.Random(7)
+    n = 60
+    record_run(
+        store, SMALL, scores=[rng.choice([0, 1]) for _ in range(n)],
+        logprobs=[-rng.random() for _ in range(n)],
+    )  # fmt: skip
+    record_run(store, BIG, scores=[1] * n)
+    ev = evaluate_cascade(store, SMALL, BIG, target=0.8)
+    assert ev.heldout is not None
+    assert ev.heldout.point.score <= ev.recommended.score + 0.15
