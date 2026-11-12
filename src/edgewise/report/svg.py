@@ -283,7 +283,9 @@ def speedup_chart(
                 f'<path class="s{i + 1}" d="{_hbar(sx(1), sx(value), y, bar_h)}">'
                 f"<title>{escape(task)}, {escape(name)}: {value:.2f}× standard speed</title></path>"
             )
-            anchor, lx = ("start", sx(value) + 6) if value >= 1 else ("end", sx(value) - 6)
+            # A slower bar grows left towards the task names, so its value goes on the
+            # empty side of the baseline instead of at the bar's end.
+            anchor, lx = "start", max(sx(value), sx(1)) + 6
             body.append(
                 f'<text class="tick" x="{lx:.1f}" y="{y + bar_h - 3:.1f}" text-anchor="{anchor}">{value:.2f}×</text>'
             )
@@ -291,7 +293,7 @@ def speedup_chart(
     return _doc(
         height,
         f"Decoding speed-up: {short_name(model_id)}",
-        "Speed relative to standard decoding, same model, same output. Bars left of 1× are slower.",
+        "Decode speed relative to standard decoding, same model and prompts. Bars left of 1× are slower.",
         body,
         f"Bar chart of decoding speed relative to standard decoding for {len(tasks)} tasks "
         f"and {len(series)} accelerated decoding modes.",
@@ -368,9 +370,27 @@ def cascade_chart(
         share, value = recommended
         text = f"recommended: {share:.0%} local, score {value:.2f}"
         anchor, dx = ("end", -10) if share > 0.5 else ("start", 10)
+        x_text = sx(share) + dx
+        x_far = x_text + (-1 if anchor == "end" else 1) * len(text) * 7.6
+        x_lo, x_hi = sorted((x_text, x_far))
+
+        def line_y(x: float) -> float:
+            for (s0, v0), (s1, v1) in zip(pts, pts[1:], strict=False):
+                if sx(s0) <= x <= sx(s1):
+                    t = (x - sx(s0)) / (sx(s1) - sx(s0)) if s1 > s0 else 0.0
+                    return sy(v0) + t * (sy(v1) - sy(v0))
+            return sy(pts[-1][1])
+
+        def clearance(baseline: float) -> float:
+            # Distance from the middle of the text to the line, over the text's width.
+            xs = [x_lo + (x_hi - x_lo) * i / 20 for i in range(21)]
+            return min(abs(line_y(x) - (baseline - 5)) for x in xs)
+
+        # Above the marker or below it: whichever keeps the text further from the line.
+        y_text = max((sy(value) - 14, sy(value) + 26), key=clearance)
         body.append(f'<circle class="s1 ring" cx="{sx(share):.1f}" cy="{sy(value):.1f}" r="7"/>')
         body.append(
-            f'<text class="strong" x="{sx(share) + dx:.1f}" y="{sy(value) - 12:.1f}" text-anchor="{anchor}">{escape(text)}</text>'
+            f'<text class="strong" x="{x_text:.1f}" y="{y_text:.1f}" text-anchor="{anchor}">{escape(text)}</text>'
         )
 
     return _doc(

@@ -290,7 +290,7 @@ route_log(request_id, ts, policy, decision, reason, local_model_id, cloud_model_
 6. **Pick:** from the frontier, choose by preference:
    - `speed`: fastest variant meeting the quality floor
    - `quality`: highest quality that fits
-   - `balanced` (default): maximize `quality_rel × normalized_speed`
+   - `balanced` (default): the fastest variant whose score is within 0.05 of the best one, or within one eval item if that is more (the first design, `quality × normalized speed`, recommended fast models with poor scores once real data came in; see §17)
 7. **Explain:** print the choice, the runner-up and *why* (e.g. "Q4 is 1.6× faster but drops tool-call accuracy from 0.92 to 0.71").
 
 **Outputs:** a Rich table in the terminal, `--json` for scripts, and a Pareto chart (`edgewise report advisor`) for the README.

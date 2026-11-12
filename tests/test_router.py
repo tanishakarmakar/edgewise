@@ -252,6 +252,8 @@ def test_threshold_is_chosen_on_one_half_and_reported_on_the_other(store):
     assert -0.5 < ev.recommended.threshold < -0.4
     assert held.point.score == 1.0 and held.point.threshold == ev.recommended.threshold
     assert held.local_only_score < 1.0 and held.strong_only_score == 1.0
+    # The chart marker is that threshold applied to every item, so it lies on the curve.
+    assert ev.recommended_overall in ev.points
 
 
 def test_split_is_stable_across_runs(store):

@@ -258,8 +258,11 @@ def build_report(
                 ),
                 "",
             ]  # fmt: skip
-            for model_id, speedups in by_model.items():
-                series = list(dict.fromkeys(name for t in speedups.values() for name in t))
+            for model_id, by_task in by_model.items():
+                # Same task order and same colour per decoding mode in every chart.
+                speedups = {t: by_task[t] for t in TASKS if t in by_task}
+                names = {name for t in speedups.values() for name in t}
+                series = sorted(names, key=lambda n: (not n.startswith("prompt lookup"), n))
                 name = f"speedup-{model_id.replace('@', '-')}.svg"
                 charts[name] = svg.speedup_chart(speedups, series, model_id)
                 parts += [f"![Decoding speed-up for {svg.short_name(model_id)}]({name})", ""]
@@ -274,7 +277,9 @@ def build_report(
             sections.append("router")
             charts["cascade.svg"] = svg.cascade_chart(
                 [(p.local_share, p.score) for p in ev.points],
-                (ev.recommended.local_share, ev.recommended.score) if ev.recommended else None,
+                (ev.recommended_overall.local_share, ev.recommended_overall.score)
+                if ev.recommended_overall
+                else None,
                 local_model,
                 strong_model,
             )
