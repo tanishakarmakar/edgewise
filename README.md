@@ -43,7 +43,7 @@ All five parts are implemented, covered by unit tests, and have now been run on 
 | Bench (speed, memory, task quality) | ✅ | ✅ 8 of the 10 catalog models (the two 3B 8-bit variants do not fit comfortably in 8 GB) |
 | Accelerator (speculative + prompt-lookup decoding) | ✅ | ✅ 1.5B and 3B models; text matches standard decoding on 330 of 336 items |
 | Advisor | ✅ | ✅ recommendations for all five tasks from measured data |
-| Router + local API | ✅ | ✅ on-device cascade (1.5B answering, 3B as escalation); the Claude API tier has only been tested with a stand-in client |
+| Router + local API | ✅ | ✅ on-device cascade (1.5B answering, 3B as escalation), and a live cloud cascade through OpenRouter (0.5B answering, Claude Haiku 5.5 as escalation); the direct Claude API backend has only been tested with a stand-in client |
 | Demo page | ✅ | ✅ all three tabs exercised with real models |
 | Reports and charts | ✅ | ✅ generated from the measurements below |
 
@@ -246,7 +246,7 @@ Design notes: [technical spec](docs/SPEC.md) · [architecture and flow diagrams]
 - Eval sets are hand-written and small (12 to 20 items per task); public datasets would make scores more robust. Each configuration was benchmarked once.
 - The draft-model path has no rule for skipping the draft when the answer will be short, which is when it loses. The cost-aware policy also uses a pass-cost curve measured once at load, and real verification passes ran about 20% slower than that calibration.
 - The Router's confidence signal is weak on very short answers, and its threshold is tuned on eval tasks. A small learned classifier is the planned next step.
-- The Claude API tier is implemented and unit-tested with a stand-in client, but has not been run against the live API.
+- Cloud escalation was checked live through OpenRouter with five requests (stay local, escalate, private, personal data, rejected key), not benchmarked. The direct Claude API backend is unit-tested with a stand-in client and has not been run against the live API.
 - The two 3B 8-bit variants have not been benchmarked on this device.
 - The memory estimate is fitted on one device.
 - MLX is the only local backend. llama.cpp (GGUF) is planned.
