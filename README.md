@@ -120,7 +120,7 @@ For each request, in order:
 2. **Cascade**: answer locally, then escalate only if the answer is empty, is not valid JSON when JSON was asked for, or was generated with low confidence (mean token log-probability below a threshold).
 3. If escalation fails, the local answer is returned instead of an error.
 
-The escalation tier is either a larger on-device model or the Claude API; cost is tracked per request, and prompts are never written to the route log. `edgewise report --local A --strong B` replays the cascade at every threshold from stored benchmark results, so the threshold is chosen from data instead of by guess. When there are enough eval items, it is chosen on one half and reported on the other.
+The escalation tier is a larger on-device model, the Claude API, or any OpenAI-compatible endpoint (`--remote openrouter`: OpenRouter by default, or a self-hosted server such as `llama-server` via `[remote] base_url` in `edgewise.toml`). API keys are read from environment variables only. Cost is tracked per request, and prompts are never written to the route log. `edgewise report --local A --strong B` replays the cascade at every threshold from stored benchmark results, so the threshold is chosen from data instead of by guess. When there are enough eval items, it is chosen on one half and reported on the other.
 
 `edgewise serve` exposes the router as `POST /v1/chat/completions` (JSON and SSE), so OpenAI-compatible clients work unchanged. Each response carries an `edgewise` object with the route, the reason and the cost.
 
@@ -228,7 +228,7 @@ Tests use a fake backend with a virtual clock and a stand-in API client, so the 
 ```
 src/edgewise/
   cli.py  config.py  schema.py  hardware.py  catalog.py  store.py
-  backends/     mlx, cloud, fake
+  backends/     mlx, cloud, openai_compat, fake
   bench/        runner, metrics
   evals/        tasks, scorers            (data in evals/data/)
   accelerator/  engine, mlx_model

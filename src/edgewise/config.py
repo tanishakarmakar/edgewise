@@ -25,9 +25,24 @@ class CloudConfig(BaseModel):
     output_price_per_mtok: float = 20.0
 
 
+class RemoteConfig(BaseModel):
+    """An OpenAI-compatible endpoint: OpenRouter by default, or e.g. a local llama-server."""
+
+    base_url: str = "https://openrouter.ai/api/v1"
+    # OpenRouter's own router, which picks a model per request. Set a specific model id from
+    # the provider's model list for repeatable behaviour and a known price.
+    model: str = "openrouter/auto"
+    # Name of the environment variable that holds the key. The key itself never goes here.
+    api_key_env: str = "OPENROUTER_API_KEY"
+    # USD per million tokens of the chosen model; 0 means cost is not tracked.
+    input_price_per_mtok: float = 0.0
+    output_price_per_mtok: float = 0.0
+
+
 class RouterConfig(BaseModel):
     local_model: str = "qwen2.5-1.5b-instruct@mlx-4bit"
-    # "cloud", the id of a larger catalog model to escalate to on-device, or "none".
+    # "cloud" (Claude API), "openrouter" (the [remote] endpoint), the id of a larger catalog
+    # model to escalate to on-device, or "none".
     remote_model: str = "cloud"
     policy: Literal["cascade", "local-only", "remote-only"] = "cascade"
     # Escalate when the local answer's mean token log-probability is below this.
@@ -38,6 +53,7 @@ class RouterConfig(BaseModel):
 class Config(BaseModel):
     router: RouterConfig = Field(default_factory=RouterConfig)
     cloud: CloudConfig = Field(default_factory=CloudConfig)
+    remote: RemoteConfig = Field(default_factory=RemoteConfig)
 
 
 def load_config(path: Path | None = None) -> Config:
