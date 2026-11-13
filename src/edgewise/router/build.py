@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from urllib.parse import urlparse
 
 from edgewise.backends import Backend, get_backend
 from edgewise.catalog import Catalog, estimate_memory
@@ -11,6 +12,14 @@ from edgewise.hardware import detect
 from edgewise.router.core import Router, Tier
 from edgewise.router.rules import Connectivity
 from edgewise.store import Store
+
+# Values of router.remote_model that select the [remote] OpenAI-compatible endpoint.
+OPENAI_COMPATIBLE = ("openrouter", "openai-compatible")
+
+
+def _is_local(base_url: str) -> bool:
+    host = urlparse(base_url).hostname or ""
+    return host in ("localhost", "127.0.0.1", "::1")
 
 
 def build_router(
@@ -24,7 +33,7 @@ def build_router(
     rc = config.router
     local_variant = catalog.get(rc.local_model)
     remote_variant = None
-    if rc.remote_model not in ("cloud", "none"):
+    if rc.remote_model not in ("cloud", "none", *OPENAI_COMPATIBLE):
         remote_variant = catalog.get(rc.remote_model)
 
     # Two on-device models share one memory budget; check before loading either.
@@ -56,6 +65,22 @@ def build_router(
             needs_network=True,
         )
         is_online = Connectivity()
+    elif rc.remote_model in OPENAI_COMPATIBLE:
+        from edgewise.backends import openai_compat
+
+        endpoint = openai_compat.OpenAICompatBackend(
+            config.remote.base_url, config.remote.api_key_env
+        )
+        remote = Tier(
+            endpoint,
+            endpoint.load(openai_compat.remote_variant(config.remote.model)),
+            input_price=config.remote.input_price_per_mtok,
+            output_price=config.remote.output_price_per_mtok,
+            # A server on this machine is reachable offline; anything else needs the network.
+            needs_network=not _is_local(config.remote.base_url),
+        )
+        if remote.needs_network:
+            is_online = Connectivity()
     elif remote_variant is not None:
         remote_backend = (
             local_backend

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from edgewise.hardware import HardwareInfo
 
-BackendName = Literal["mlx", "llamacpp", "cloud", "fake"]
+BackendName = Literal["mlx", "llamacpp", "cloud", "openai", "fake"]
 Decoding = Literal["standard", "speculative", "prompt_lookup"]
 KPolicy = Literal["fixed", "heuristic", "cost_aware"]
 

@@ -17,6 +17,10 @@ def get_backend(name: BackendName) -> Backend:
         from edgewise.backends.cloud import CloudBackend
 
         return CloudBackend()
+    if name == "openai":
+        from edgewise.backends.openai_compat import OpenAICompatBackend
+
+        return OpenAICompatBackend()
     if name == "fake":
         from edgewise.backends.fake import FakeBackend
 
